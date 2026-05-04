@@ -3,7 +3,7 @@ use std::hash::Hasher as _;
 use futures::{StreamExt, stream};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_stream::StreamMap;
-use tracing::{debug, trace, warn};
+use tracing::{trace, warn};
 
 use crate::{Action, Cmd, Event, EventBus, Hasher, MsgStream, OwnedSend, Sub, Tea, Tick};
 
@@ -51,7 +51,7 @@ impl Runner {
                 Some(action) = action_rx.recv() => {
                     match action {
                         Action::Quit => break,
-                        Action::SendEvent(sender) => sender(&event_bus),
+                        Action::PubEvent(sender) => sender(event_bus.pub_cap()),
                         Action::Msg(msg) => {
                             let cmd = tea.update(&mut model, msg);
                             dirty = true;

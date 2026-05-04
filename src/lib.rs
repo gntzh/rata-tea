@@ -1,7 +1,9 @@
 use dashmap::DashMap;
-use futures::{Stream, StreamExt, stream::BoxStream};
+use futures::{FutureExt, Stream, StreamExt, stream::BoxStream};
 use ratatui::Frame;
-use std::{any::TypeId, fmt::Debug, future, hash::Hash, marker::PhantomData, pin::Pin};
+use std::{
+    any::TypeId, convert::Infallible, fmt::Debug, future, hash::Hash, marker::PhantomData, pin::Pin,
+};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tracing::trace;
 
@@ -202,7 +204,7 @@ impl<T: Send + 'static> OwnedSend for T {}
 
 pub enum Action<Msg> {
     Msg(Msg),
-    SendEvent(Box<dyn FnOnce(&EventBus) + Send>),
+    PubEvent(Box<dyn FnOnce(EventBusPub<'_>) + Send>),
     Quit,
 }
 
@@ -217,6 +219,34 @@ impl<Msg: OwnedSend> Cmd<Msg> {
     pub fn batch(cmds: impl IntoIterator<Item = Self>) -> Self {
         Self(cmds.into_iter().flat_map(|factories| factories.0).collect())
     }
+
+    pub fn map<F, Msg2>(self, mapper: F) -> Cmd<Msg2>
+    where
+        F: FnMut(Msg) -> Msg2 + Send + Clone + 'static,
+        Msg2: OwnedSend,
+    {
+        let commands = self
+            .0
+            .into_iter()
+            .map(move |fut| {
+                let mut mapper = mapper.clone();
+
+                let fut = async move {
+                    let action = fut.await;
+                    match action {
+                        Action::Msg(msg) => {
+                            let msg2 = mapper(msg);
+                            Action::<Msg2>::Msg(msg2)
+                        }
+                        Action::PubEvent(a) => Action::PubEvent(a),
+                        Action::Quit => Action::Quit,
+                    }
+                };
+                fut.boxed()
+            })
+            .collect::<Vec<_>>();
+        Cmd(commands)
+    }
 }
 
 impl<Msg: OwnedSend> Cmd<Msg> {
@@ -230,6 +260,14 @@ impl<Msg: OwnedSend> Cmd<Msg> {
 
     pub fn quit() -> Self {
         Self::effect(Action::Quit)
+    }
+
+    pub fn future(fut: impl Future<Output = Msg> + Send + 'static) -> Self {
+        Self(vec![Box::pin(async move { Action::Msg(fut.await) })])
+    }
+
+    pub fn future_action(fut: impl Future<Output = Action<Msg>> + Send + 'static) -> Self {
+        Self(vec![Box::pin(fut)])
     }
 }
 
@@ -531,5 +569,31 @@ pub struct EventBusPub<'a>(&'a EventBus);
 impl<'a> EventBusPub<'a> {
     pub fn publish<E: OwnedSend + Clone>(&self, event: E) {
         self.0.publish(event)
+    }
+}
+
+pub struct Task<T, E>(Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>);
+
+impl<T: 'static, E: 'static> Task<T, E> {
+    pub fn future(fut: impl Future<Output = Result<T, E>> + Send + 'static) -> Self {
+        Self(Box::pin(fut))
+    }
+
+    pub fn attempt<Msg, F>(self, mapper: F) -> Cmd<Msg>
+    where
+        F: FnOnce(Result<T, E>) -> Msg + Send + 'static,
+        Msg: OwnedSend,
+    {
+        Cmd::future(async move { mapper(self.0.await) })
+    }
+}
+
+impl<T: 'static> Task<T, Infallible> {
+    pub fn perform<Msg, F>(self, mapper: F) -> Cmd<Msg>
+    where
+        F: FnOnce(T) -> Msg + Send + 'static,
+        Msg: OwnedSend,
+    {
+        Cmd::future(async move { mapper(self.0.await.expect("unwrap from an infallible result")) })
     }
 }
