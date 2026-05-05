@@ -1,4 +1,4 @@
-use std::{any::TypeId, convert::Infallible, fmt::Debug, hash::Hash, pin::Pin};
+use std::{any::TypeId, fmt::Debug, hash::Hash};
 
 pub use crossterm::event::Event as TerminalEvent;
 use dashmap::DashMap;
@@ -201,28 +201,29 @@ impl EventBus {
     }
 }
 
-pub struct Task<T, E>(Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>);
+// pub struct Task<T, E>(Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>);
 
-impl<T: 'static, E: 'static> Task<T, E> {
-    pub fn future(fut: impl Future<Output = Result<T, E>> + Send + 'static) -> Self {
-        Self(Box::pin(fut))
-    }
+// impl<T: 'static, E: 'static> Task<T, E> {
+//     pub fn future(fut: impl Future<Output = Result<T, E>> + Send + 'static) -> Self {
+//         Self(Box::pin(fut))
+//     }
 
-    pub fn attempt<Msg, F>(self, mapper: F) -> Cmd<Msg>
-    where
-        F: FnOnce(Result<T, E>) -> Msg + Send + 'static,
-        Msg: OwnedSend,
-    {
-        Cmd::future(async move { mapper(self.0.await) })
-    }
-}
+//     /// run a
+//     pub fn attempt<Msg, F>(self, mapper: F) -> Cmd<Msg>
+//     where
+//         F: FnOnce(Result<T, E>) -> Msg + Send + 'static,
+//         Msg: OwnedSend,
+//     {
+//         Cmd::future(async move { mapper(self.0.await) })
+//     }
+// }
 
-impl<T: 'static> Task<T, Infallible> {
-    pub fn perform<Msg, F>(self, mapper: F) -> Cmd<Msg>
-    where
-        F: FnOnce(T) -> Msg + Send + 'static,
-        Msg: OwnedSend,
-    {
-        Cmd::future(async move { mapper(self.0.await.expect("unwrap from an infallible result")) })
-    }
-}
+// impl<T: 'static> Task<T, Infallible> {
+//     pub fn perform<Msg, F>(self, mapper: F) -> Cmd<Msg>
+//     where
+//         F: FnOnce(T) -> Msg + Send + 'static,
+//         Msg: OwnedSend,
+//     {
+//         Cmd::future(async move { mapper(self.0.await.expect("unwrap from an infallible result")) })
+//     }
+// }

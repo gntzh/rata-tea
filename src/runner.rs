@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
 use futures::StreamExt;
-use tokio::task::JoinHandle;
 use tracing::{error, trace, warn};
 
 use crate::{
-    AbortHandle, Cmd, Dispatch, OwnedSend, Sub, SubId, Tea, Tick, terminal::GLOBAL_EVENT_BUS,
+    AbortHandle, Cmd, Dispatch, OwnedSend, Sub, SubId, Tick, terminal::GLOBAL_EVENT_BUS,
 };
 
 pub struct Runner<Tea: crate::Tea> {
@@ -107,18 +106,10 @@ impl<Tea: crate::Tea> Runner<Tea> {
     fn spawn_cmd<Msg: OwnedSend>(
         cmd: Cmd<Msg>,
         dispatch: impl Dispatch<Msg> + Clone + 'static,
-    ) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            for cmd in cmd.0 {
-                tokio::spawn({
-                    let dispatch = dispatch.clone();
-                    async move {
-                        let msg = cmd.await;
-                        dispatch(msg);
-                    }
-                });
-            }
-        })
+    ) {
+        for cmd in cmd.0 {
+            tokio::spawn(cmd.execute(Box::new(dispatch.clone())));
+        }
     }
 
     fn rebuild_sub<Msg: OwnedSend>(

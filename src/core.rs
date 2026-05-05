@@ -1,6 +1,6 @@
-use std::{any::TypeId, hash::Hasher as _, marker::PhantomData, pin::Pin};
+use std::{any::TypeId, hash::Hasher as _, marker::PhantomData};
 
-use futures::FutureExt as _;
+use futures::{FutureExt as _, future::BoxFuture};
 pub type Hasher = std::hash::DefaultHasher;
 
 pub trait OwnedSend: Send + 'static {}
@@ -11,8 +11,25 @@ impl<F, Msg> Dispatch<Msg> for F where F: Fn(Msg) + Send + 'static {}
 
 pub type AbortHandle = futures::future::AbortHandle;
 
-pub struct Cmd<Msg: OwnedSend>(pub Vec<Command<Msg>>);
-pub type Command<Msg> = Pin<Box<dyn Future<Output = Msg> + Send + 'static>>;
+pub struct Cmd<Msg: OwnedSend>(pub Vec<BoxCommand<Msg>>);
+pub trait Command<Msg: OwnedSend> {
+    fn execute(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg>>) -> BoxFuture<'static, ()>;
+}
+
+pub type BoxCommand<Msg> = Box<dyn Command<Msg> + Send + 'static>;
+pub type BoxDispatch<Msg> = Box<dyn Dispatch<Msg> + Send + 'static>;
+
+impl<F, Msg> Command<Msg> for F
+where
+    F: FnOnce(BoxDispatch<Msg>) -> BoxFuture<'static, ()> + Send + 'static,
+    Msg: Send + 'static,
+{
+    fn execute(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg>>) -> BoxFuture<'static, ()> {
+        self(dispatch)
+    }
+}
+
+// pub type Command<Msg> = Pin<Box<dyn Future<Output = Msg> + Send + 'static>>;
 
 impl<Msg: OwnedSend> Cmd<Msg> {
     pub fn none() -> Self {
@@ -25,22 +42,47 @@ impl<Msg: OwnedSend> Cmd<Msg> {
 
     pub fn map<F, Msg2>(self, mapper: F) -> Cmd<Msg2>
     where
-        F: FnMut(Msg) -> Msg2 + Send + Clone + 'static,
+        F: Fn(Msg) -> Msg2 + Send + Clone + 'static,
         Msg2: OwnedSend,
     {
+        struct MapCommand<F, Msg, Msg2>
+        where
+            F: Fn(Msg) -> Msg2 + Send + Clone + 'static,
+            Msg: OwnedSend,
+            Msg2: OwnedSend,
+        {
+            inner: BoxCommand<Msg>,
+            mapper: F,
+        }
+        impl<F, Msg, Msg2> Command<Msg2> for MapCommand<F, Msg, Msg2>
+        where
+            F: Fn(Msg) -> Msg2 + Send + Clone + 'static,
+            Msg: OwnedSend,
+            Msg2: OwnedSend,
+        {
+            fn execute(
+                self: Box<Self>,
+                dispatch: Box<dyn Dispatch<Msg2>>,
+            ) -> BoxFuture<'static, ()> {
+                let mapper = self.mapper;
+                let dispatch = Box::new(move |msg| {
+                    let msg2 = mapper(msg);
+                    dispatch(msg2)
+                });
+                (self.inner).execute(dispatch)
+            }
+        }
         let commands = self
             .0
             .into_iter()
-            .map(move |fut| {
-                let mut mapper = mapper.clone();
-
-                let fut = async move {
-                    let msg = fut.await;
-                    mapper(msg)
-                };
-                fut.boxed()
+            .map(|command| {
+                Box::new(MapCommand {
+                    inner: command,
+                    mapper: mapper.clone(),
+                }) as BoxCommand<Msg2>
             })
             .collect::<Vec<_>>();
+
         Cmd(commands)
     }
 }
@@ -50,8 +92,16 @@ impl<Msg: OwnedSend> Cmd<Msg> {
         self.0.len()
     }
 
-    pub fn future(fut: impl Future<Output = Msg> + Send + 'static) -> Self {
-        Self(vec![Box::pin(fut)])
+    pub fn from_fn<Fut: Future<Output = ()> + Send + 'static>(
+        f: impl FnOnce(BoxDispatch<Msg>) -> Fut + Send + 'static,
+    ) -> Self {
+        let command = Box::new(|d: BoxDispatch<Msg>| f(d).boxed()) as BoxCommand<Msg>;
+        Self(vec![command])
+    }
+
+    pub fn future(fut: impl Future<Output = ()> + Send + 'static) -> Self {
+        let command = Box::new(|_: BoxDispatch<Msg>| fut.boxed()) as BoxCommand<Msg>;
+        Self(vec![command])
     }
 }
 
@@ -160,7 +210,7 @@ impl<Msg: OwnedSend> Sub<Msg> {
         {
             fn create(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg2>>) -> AbortHandle {
                 let mapper = self.mapper;
-                
+
                 self.inner.create(Box::new(move |msg| {
                     let msg2 = mapper(msg);
                     dispatch(msg2)
@@ -204,7 +254,7 @@ impl<Msg: OwnedSend> Sub<Msg> {
         {
             fn create(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg2>>) -> AbortHandle {
                 let mapper = self.mapper;
-                
+
                 self.inner.create(Box::new(move |msg| {
                     if let Some(msg2) = mapper(msg) {
                         dispatch(msg2)
