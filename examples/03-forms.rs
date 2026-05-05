@@ -5,15 +5,15 @@ use ratatui::{
     text::Line,
     widgets::{Block, Borders, Paragraph},
 };
-use ratatui_tea_examples::{Application, Cmd, Runner, Sub, term::on_term_event};
+use ratatui_tea_examples::{Action, Application, Cmd, Runner, Sub, terminal::on_term_event};
 use ratatui_textarea::{Input, Key, TextArea};
 mod common;
 
 fn main() -> color_eyre::Result<()> {
     common::initialize_logging()?;
     let tea = Application::new(Model::new, Model::update, Model::view)
-        .with_subscriptions(Model::subscriptions);
-    Runner::default().run(tea)?;
+        .subscriptions(Model::subscriptions);
+    Runner::default().msg_to_action(Msg::into_action).run(tea)?;
     Ok(())
 }
 
@@ -21,6 +21,15 @@ enum Msg {
     Quit,
     Input(Input),
     SwitchNext,
+}
+
+impl Msg {
+    fn into_action(self) -> Action<Msg> {
+        match self {
+            Msg::Quit => Action::Quit,
+            _ => Action::Msg(self),
+        }
+    }
 }
 
 struct Model {
@@ -97,7 +106,7 @@ impl Model {
                 };
                 self.activate();
             }
-            Msg::Quit => return Cmd::quit(),
+            Msg::Quit => unreachable!(),
         }
         Cmd::none()
     }

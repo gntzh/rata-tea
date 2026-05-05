@@ -3,21 +3,32 @@ use ratatui::{
     layout::{Constraint, Layout},
     widgets::{Block, Borders, Paragraph},
 };
-use ratatui_tea_examples::{Application, Cmd, Sub, term::on_term_event};
+use ratatui_tea_examples::{Action, Application, Cmd, Sub, terminal::on_term_event};
 use ratatui_textarea::{Input, Key};
 mod common;
 
 fn main() -> color_eyre::Result<()> {
     common::initialize_logging()?;
     let tea = Application::new(Model::new, Model::update, Model::view)
-        .with_subscriptions(Model::subscriptions);
-    ratatui_tea_examples::Runner::default().run(tea)?;
+        .subscriptions(Model::subscriptions);
+    ratatui_tea_examples::Runner::default()
+        .msg_to_action(Msg::into_action)
+        .run(tea)?;
     Ok(())
 }
 
 enum Msg {
     Quit,
     Input(Input),
+}
+
+impl Msg {
+    fn into_action(self) -> Action<Msg> {
+        match self {
+            Msg::Quit => Action::Quit,
+            _ => Action::Msg(self),
+        }
+    }
 }
 
 struct Model {
@@ -33,10 +44,10 @@ impl Model {
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
+            Msg::Quit => unreachable!(),
             Msg::Input(input) => {
                 self.textarea.input(input);
             }
-            Msg::Quit => return Cmd::quit(),
         }
         Cmd::none()
     }

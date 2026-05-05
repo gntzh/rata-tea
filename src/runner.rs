@@ -1,132 +1,157 @@
-use std::hash::Hasher as _;
+use std::collections::HashMap;
 
-use futures::{StreamExt, stream};
-use tokio::{sync::mpsc, task::JoinHandle};
-use tokio_stream::StreamMap;
-use tracing::{trace, warn};
+use futures::StreamExt;
+use tokio::task::JoinHandle;
+use tracing::{error, trace, warn};
 
-use crate::{Action, Cmd, Event, EventBus, Hasher, MsgStream, OwnedSend, Sub, Tea, Tick};
+use crate::{
+    AbortHandle, Cmd, Dispatch, OwnedSend, Sub, SubId, Tea, Tick, terminal::GLOBAL_EVENT_BUS,
+};
 
-pub struct Runner {
+pub struct Runner<Tea: crate::Tea> {
     frame_rate: f64,
+    msg_to_action: fn(Tea::Msg) -> Action<Tea::Msg>,
 }
 
-impl Runner {
+pub enum Action<Msg> {
+    Msg(Msg),
+    Quit,
+}
+
+impl<Tea: crate::Tea> Runner<Tea> {
+    pub fn msg_to_action(self, msg_to_action: fn(Tea::Msg) -> Action<Tea::Msg>) -> Self {
+        Self {
+            msg_to_action,
+            ..self
+        }
+    }
+
     pub fn frame_rate(self, frame_rate: f64) -> Self {
-        Self { frame_rate }
+        Self { frame_rate, ..self }
     }
 
     #[tokio::main]
-    pub async fn run<T: Tea>(self, tea: T) -> color_eyre::Result<()> {
+    pub async fn run(self, tea: Tea) -> color_eyre::Result<()> {
         color_eyre::install()?;
         let mut tui = ratatui::try_init()?;
 
-        let event_bus = EventBus::new();
-        let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel::<Action<T::Msg>>();
-
-        let tick_stream = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-            std::time::Duration::from_secs_f64(1.0 / self.frame_rate),
-        ))
-        .map(|_| Ok(Event::Tick(Tick)))
-        .boxed();
-        let terminal_stream = crossterm::event::EventStream::new()
-            .map(|event| event.map(Event::Terminal))
-            .boxed();
-        let mut event_stream = stream::select_all([tick_stream, terminal_stream]);
-
+        let (msg_tx, msg_rx) = async_channel::bounded::<Tea::Msg>(100);
+        let dispatch = {
+            let tx = msg_tx.clone();
+            move |msg| {
+                match tx.force_send(msg) {
+                    Ok(Some(_)) => warn!(
+                        "too many msg in channel, drop an oldest msg. please consider increasing the capacity of the channel."
+                    ),
+                    Err(_) => error!("msg channel was closed unexpectedly"),
+                    Ok(None) => (),
+                };
+            }
+        };
         let (mut model, cmd) = tea.init();
-        let mut active_sub = StreamMap::new();
+        let mut active_sub = HashMap::new();
 
-        Self::rebuild_sub(tea.subscriptions(&model), &event_bus, &mut active_sub);
-        Self::spawn_cmd(cmd, action_tx.clone());
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs_f64(1.0 / self.frame_rate));
+        let mut terminal_event_stream = crossterm::event::EventStream::new();
+
+        Self::rebuild_sub(tea.subscriptions(&model), dispatch.clone(), &mut active_sub);
+        Self::spawn_cmd(cmd, dispatch.clone());
         let mut dirty = true;
 
         loop {
             tokio::select! {
-                Some((_, msg)) = active_sub.next() => {
-                    action_tx
-                        .send(Action::Msg(msg))
-                        .expect("action/msg channel was closed unexpectedly");
-                }
-                Some(action) = action_rx.recv() => {
-                    match action {
-                        Action::Quit => break,
-                        Action::PubEvent(sender) => sender(event_bus.pub_cap()),
-                        Action::Msg(msg) => {
-                            let cmd = tea.update(&mut model, msg);
-                            dirty = true;
-                            Self::rebuild_sub(tea.subscriptions(&model), &event_bus, &mut active_sub);
-                            Self::spawn_cmd(cmd, action_tx.clone());
-                        },
+                msg = msg_rx.recv() => {
+                    match msg {
+                        Err(err) => {
+                            warn!(?err, "msg channel was closed unexpectedly")
+                        }
+                        Ok(msg) => {
+                            match (self.msg_to_action)(msg) {
+                                Action::Msg(msg) => {
+                                    let cmd = tea.update(&mut model, msg);
+                                    dirty = true;
+                                    Self::rebuild_sub(tea.subscriptions(&model), dispatch.clone(), &mut active_sub);
+                                    Self::spawn_cmd(cmd, dispatch.clone());
+                                },
+                                Action::Quit => {
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
-                Some(event) = event_stream.next() => {
-                    match event {
-                        Ok(event) => {
-                            if dirty && let Event::Tick(_) = event  {
-                                trace!("drawing frame");
-                                tui.draw(|frame| tea.view(&mut model, frame)).expect("terminal draw failed");
-                                dirty = false;
-                            }
-                            match event {
-                                Event::Tick(tick) => event_bus.publish(tick),
-                                Event::Terminal(term_event) => event_bus.publish(term_event),
-                            }
-                        },
+                _tick = ticker.tick() => {
+                    if dirty {
+                        trace!("drawing frame");
+                        tui.draw(|frame| tea.view(&mut model, frame)).expect("terminal draw failed");
+                        dirty = false;
+                    }
+                    GLOBAL_EVENT_BUS.publish(Tick);
+                }
+                Some(term_event) = terminal_event_stream.next() => {
+                    // GLOBAL_EVENT_BUS.publish(term_event);
+                    match term_event {
+                        Ok(term_event) => GLOBAL_EVENT_BUS.publish(term_event),
                         Err(err) => {
                             warn!(?err, "error reading terminal event");
                         }
                     }
-                }
-            };
+            }};
         }
 
         ratatui::try_restore()?;
         Ok(())
     }
 
-    fn spawn_cmd<M: OwnedSend>(
-        cmd: Cmd<M>,
-        action_tx: mpsc::UnboundedSender<Action<M>>,
+    fn spawn_cmd<Msg: OwnedSend>(
+        cmd: Cmd<Msg>,
+        dispatch: impl Dispatch<Msg> + Clone + 'static,
     ) -> JoinHandle<()> {
         tokio::spawn(async move {
             for cmd in cmd.0 {
                 tokio::spawn({
-                    let action_tx = action_tx.clone();
+                    let dispatch = dispatch.clone();
                     async move {
-                        let action = cmd.await;
-                        action_tx
-                            .send(action)
-                            .expect("action/msg channel was closed unexpectedly");
+                        let msg = cmd.await;
+                        dispatch(msg);
                     }
                 });
             }
         })
     }
 
-    fn rebuild_sub<M: OwnedSend>(
-        sub: Sub<M>,
-        event_bus: &EventBus,
-        active_sub: &mut StreamMap<u64, MsgStream<M>>,
+    fn rebuild_sub<Msg: OwnedSend>(
+        sub: Sub<Msg>,
+        dispatch: impl Dispatch<Msg> + Send + Clone + 'static,
+        active_sub: &mut HashMap<SubId, DropHandle>,
     ) {
-        let mut new = StreamMap::new();
-        for factory in sub.0 {
-            let mut hasher = Hasher::new();
-            factory.hash(&mut hasher);
-            let hash = hasher.finish();
-            if let Some(stream) = active_sub.remove(&hash) {
-                new.insert(hash, stream);
+        let mut new = HashMap::new();
+        for (id, factory) in sub.0 {
+            if let Some(stream) = active_sub.remove(&id) {
+                new.insert(id, stream);
             } else {
-                trace!(?hash, "creating new subscription stream");
-                new.insert(hash, factory.stream(event_bus.sub_cap()));
+                trace!(?id, "creating new subscription stream");
+                new.insert(id, DropHandle(factory.create(Box::new(dispatch.clone()))));
             }
         }
         *active_sub = new;
     }
 }
 
-impl Default for Runner {
+impl<Tea: crate::Tea> Default for Runner<Tea> {
     fn default() -> Self {
-        Self { frame_rate: 30.0 }
+        Self {
+            frame_rate: 30.0,
+            msg_to_action: Action::Msg,
+        }
+    }
+}
+
+pub struct DropHandle(AbortHandle);
+
+impl Drop for DropHandle {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }

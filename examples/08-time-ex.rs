@@ -8,14 +8,19 @@ use ratatui::{
     text::{Line, Text, ToSpan},
     widgets::Paragraph,
 };
-use ratatui_tea_examples::{Application, Cmd, Sub, term::on_key_press, time::every};
+use ratatui_tea_examples::{
+    Action, Application, Cmd, Runner, Sub, terminal::on_key_press, time::every,
+};
 mod common;
 
 fn main() -> color_eyre::Result<()> {
     common::initialize_logging()?;
     let tea = Application::new(Model::new, Model::update, Model::view)
-        .with_subscriptions(Model::subscriptions);
-    ratatui_tea_examples::Runner::default().run(tea)?;
+        .subscriptions(Model::subscriptions);
+    Runner::default()
+        .msg_to_action(Msg::into_action)
+        .frame_rate(0.5)
+        .run(tea)?;
     Ok(())
 }
 
@@ -28,6 +33,15 @@ enum Msg {
     Tick,
     Switch,
     Quit,
+}
+
+impl Msg {
+    fn into_action(self) -> Action<Msg> {
+        match self {
+            Msg::Quit => Action::Quit,
+            _ => Action::Msg(self),
+        }
+    }
 }
 
 impl Model {
@@ -62,9 +76,9 @@ impl Model {
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
+            Msg::Quit => unreachable!(),
             Msg::Tick => self.time = Local::now(),
             Msg::Switch => self.run = !self.run,
-            Msg::Quit => return Cmd::quit(),
         }
         Cmd::none()
     }

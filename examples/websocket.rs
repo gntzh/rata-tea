@@ -1,14 +1,14 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Frame, widgets::Paragraph};
-use ratatui_tea_examples::{Application, Cmd, Sub, term::on_key_press};
+use ratatui_tea_examples::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
 mod common;
 
 /// todo
 fn main() -> color_eyre::Result<()> {
     common::initialize_logging()?;
     let tea = Application::new(Model::new, Model::update, Model::view)
-        .with_subscriptions(Model::subscriptions);
-    ratatui_tea_examples::Runner::default().run(tea)?;
+        .subscriptions(Model::subscriptions);
+    Runner::default().msg_to_action(Into::into).run(tea)?;
     Ok(())
 }
 
@@ -16,6 +16,15 @@ enum Msg {
     Increment,
     Decrement,
     Quit,
+}
+
+impl From<Msg> for Action<Msg> {
+    fn from(val: Msg) -> Self {
+        match val {
+            Msg::Quit => Action::Quit,
+            _ => Action::Msg(val),
+        }
+    }
 }
 
 struct Model {
@@ -29,9 +38,9 @@ impl Model {
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
+            Msg::Quit => unreachable!(),
             Msg::Increment => self.count = self.count.saturating_add(1),
             Msg::Decrement => self.count = self.count.saturating_sub(1),
-            Msg::Quit => return Cmd::quit(),
         }
         Cmd::none()
     }

@@ -1,16 +1,16 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Frame, widgets::Paragraph};
 use ratatui_tea_examples::{
-    Application, Cmd, Sub,
-    term::{on_key_event, on_key_press},
+    Action, Application, Cmd, Runner, Sub,
+    terminal::{on_key_press, on_term_event},
 };
 mod common;
 
 fn main() -> color_eyre::Result<()> {
     common::initialize_logging()?;
     let tea = Application::new(Model::new, Model::update, Model::view)
-        .with_subscriptions(Model::subscriptions);
-    ratatui_tea_examples::Runner::default().run(tea)?;
+        .subscriptions(Model::subscriptions);
+    Runner::default().msg_to_action(Msg::into_action).run(tea)?;
     Ok(())
 }
 
@@ -18,6 +18,15 @@ enum Msg {
     Increment,
     Decrement,
     Quit,
+}
+
+impl Msg {
+    fn into_action(self) -> Action<Msg> {
+        match self {
+            Msg::Quit => Action::Quit,
+            _ => Action::Msg(self),
+        }
+    }
 }
 
 struct Model {
@@ -31,9 +40,9 @@ impl Model {
 
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
+            Msg::Quit => unreachable!(),
             Msg::Increment => self.count = self.count.saturating_add(1),
             Msg::Decrement => self.count = self.count.saturating_sub(1),
-            Msg::Quit => return Cmd::quit(),
         }
         Cmd::none()
     }
@@ -59,7 +68,7 @@ impl Model {
             },
         })];
         if !self.count.is_multiple_of(5) {
-            subs.push(on_key_event().filter_map(|_| None));
+            subs.push(on_term_event().filter_map(|_| None));
         }
         Sub::batch(subs)
     }
