@@ -13,23 +13,11 @@ pub type AbortHandle = futures::future::AbortHandle;
 
 pub struct Cmd<Msg: OwnedSend>(pub Vec<BoxCommand<Msg>>);
 pub trait Command<Msg: OwnedSend> {
-    fn execute(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg>>) -> BoxFuture<'static, ()>;
+    fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()>;
 }
 
 pub type BoxCommand<Msg> = Box<dyn Command<Msg> + Send + 'static>;
 pub type BoxDispatch<Msg> = Box<dyn Dispatch<Msg> + Send + 'static>;
-
-impl<F, Msg> Command<Msg> for F
-where
-    F: FnOnce(BoxDispatch<Msg>) -> BoxFuture<'static, ()> + Send + 'static,
-    Msg: Send + 'static,
-{
-    fn execute(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg>>) -> BoxFuture<'static, ()> {
-        self(dispatch)
-    }
-}
-
-// pub type Command<Msg> = Pin<Box<dyn Future<Output = Msg> + Send + 'static>>;
 
 impl<Msg: OwnedSend> Cmd<Msg> {
     pub fn none() -> Self {
@@ -60,10 +48,7 @@ impl<Msg: OwnedSend> Cmd<Msg> {
             Msg: OwnedSend,
             Msg2: OwnedSend,
         {
-            fn execute(
-                self: Box<Self>,
-                dispatch: Box<dyn Dispatch<Msg2>>,
-            ) -> BoxFuture<'static, ()> {
+            fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg2>) -> BoxFuture<'static, ()> {
                 let mapper = self.mapper;
                 let dispatch = Box::new(move |msg| {
                     let msg2 = mapper(msg);
@@ -92,16 +77,45 @@ impl<Msg: OwnedSend> Cmd<Msg> {
         self.0.len()
     }
 
-    pub fn from_fn<Fut: Future<Output = ()> + Send + 'static>(
-        f: impl FnOnce(BoxDispatch<Msg>) -> Fut + Send + 'static,
-    ) -> Self {
-        let command = Box::new(|d: BoxDispatch<Msg>| f(d).boxed()) as BoxCommand<Msg>;
+    pub fn from_fn<F, Fut>(f: F) -> Self
+    where
+        F: FnOnce(BoxDispatch<Msg>) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        struct FnCmd<F, Fut, Msg>
+        where
+            F: FnOnce(BoxDispatch<Msg>) -> Fut + Send + 'static,
+            Fut: Future<Output = ()> + Send + 'static,
+            Msg: Send + 'static,
+        {
+            f: F,
+            _fut: PhantomData<Fut>,
+            _msg: PhantomData<Msg>,
+        }
+
+        impl<F, Fut, Msg> Command<Msg> for FnCmd<F, Fut, Msg>
+        where
+            F: FnOnce(BoxDispatch<Msg>) -> Fut + Send + 'static,
+            Fut: Future<Output = ()> + Send + 'static,
+            Msg: Send + 'static,
+        {
+            fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()> {
+                (self.f)(dispatch).boxed()
+            }
+        }
+        let command = Box::new(FnCmd {
+            f,
+            _fut: PhantomData,
+            _msg: PhantomData,
+        }) as BoxCommand<Msg>;
         Self(vec![command])
     }
 
-    pub fn future(fut: impl Future<Output = ()> + Send + 'static) -> Self {
-        let command = Box::new(|_: BoxDispatch<Msg>| fut.boxed()) as BoxCommand<Msg>;
-        Self(vec![command])
+    pub fn future<Fut>(fut: Fut) -> Self
+    where
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        Self::from_fn(|_: BoxDispatch<Msg>| fut)
     }
 }
 
