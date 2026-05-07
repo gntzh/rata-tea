@@ -33,7 +33,7 @@ impl<Tea: crate::Tea> Runner<Tea> {
         color_eyre::install()?;
         let mut tui = ratatui::try_init()?;
 
-        let (msg_tx, msg_rx) = async_channel::bounded::<Tea::Msg>(1024);
+        let (msg_tx, mut msg_rx) = tokio::sync::mpsc::channel::<Tea::Msg>(1024);
         let dispatch = {
             move |msg| {
                 let tx = msg_tx.clone();
@@ -61,10 +61,7 @@ impl<Tea: crate::Tea> Runner<Tea> {
             tokio::select! {
                 msg = msg_rx.recv() => {
                     match msg {
-                        Err(err) => {
-                            warn!(?err, "msg channel was closed unexpectedly")
-                        }
-                        Ok(msg) => {
+                        Some(msg) => {
                             match (self.msg_to_action)(msg) {
                                 Action::Msg(msg) => {
                                     let cmd = tea.update(&mut model, msg);
@@ -76,6 +73,9 @@ impl<Tea: crate::Tea> Runner<Tea> {
                                     break;
                                 }
                             }
+                        }
+                        None => {
+                            warn!("msg channel was closed unexpectedly")
                         }
                     }
                 }

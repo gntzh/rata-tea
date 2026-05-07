@@ -141,7 +141,7 @@ impl EventBus {
         &self,
         filter: impl Into<Option<fn(&E) -> bool>>,
     ) -> tokio::sync::mpsc::Receiver<E> {
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        let (tx, rx) = tokio::sync::mpsc::channel(128);
         let mut entry = self
             .map
             .entry(TypeId::of::<E>())
