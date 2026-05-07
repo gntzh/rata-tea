@@ -1,10 +1,10 @@
+use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_term_event};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
     text::{Line, Text},
     widgets::{Block, Borders, Paragraph},
 };
-use ratatui_tea_examples::{Action, Application, Cmd, Runner, Sub, terminal::on_term_event};
 use ratatui_textarea::{Input, Key, TextArea};
 mod common;
 
@@ -124,7 +124,7 @@ impl Model {
 pub mod ws {
 
     use futures::{SinkExt, StreamExt};
-    use ratatui_tea_examples::{BoxDispatch, Cmd};
+    use rata_tea::{BoxDispatch, Cmd};
     use tokio_tungstenite::tungstenite::{self};
 
     pub type Sender = tokio::sync::mpsc::Sender<Action>;

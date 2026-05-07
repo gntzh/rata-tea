@@ -1,9 +1,9 @@
+use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_term_event};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
     widgets::{Block, Borders, Paragraph},
 };
-use ratatui_tea_examples::{Action, Application, Cmd, Sub, terminal::on_term_event};
 use ratatui_textarea::{Input, Key};
 mod common;
 
@@ -11,9 +11,7 @@ fn main() -> color_eyre::Result<()> {
     common::initialize_logging()?;
     let tea = Application::new(Model::new, Model::update, Model::view)
         .subscriptions(Model::subscriptions);
-    ratatui_tea_examples::Runner::default()
-        .msg_to_action(Msg::into_action)
-        .run(tea)?;
+    Runner::default().msg_to_action(Msg::into_action).run(tea)?;
     Ok(())
 }
 

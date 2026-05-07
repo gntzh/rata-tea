@@ -1775,6 +1775,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rata-tea"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "color-eyre",
+ "crossterm",
+ "dashmap",
+ "futures",
+ "lazy_static",
+ "ratatui",
+ "ratatui-textarea",
+ "reqwest",
+ "strum 0.28.0",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-error",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ratatui"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1828,28 +1850,6 @@ checksum = "a7f1342a13e83e4bb9d0b793d0ea762be633f9582048c892ae9041ef39c936f4"
 dependencies = [
  "ratatui-core",
  "ratatui-widgets",
-]
-
-[[package]]
-name = "ratatui-tea-examples"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "color-eyre",
- "crossterm",
- "dashmap",
- "futures",
- "lazy_static",
- "ratatui",
- "ratatui-textarea",
- "reqwest",
- "strum 0.28.0",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tracing",
- "tracing-error",
- "tracing-subscriber",
 ]
 
 [[package]]

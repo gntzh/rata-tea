@@ -1,3 +1,4 @@
+use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_term_event};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
@@ -5,7 +6,6 @@ use ratatui::{
     text::Line,
     widgets::{Block, Borders, Paragraph},
 };
-use ratatui_tea_examples::{Action, Application, Cmd, Runner, Sub, terminal::on_term_event};
 use ratatui_textarea::{Input, Key, TextArea};
 mod common;
 

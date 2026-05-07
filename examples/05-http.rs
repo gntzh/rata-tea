@@ -3,7 +3,7 @@ use ratatui::{
     Frame,
     widgets::{Paragraph, Wrap},
 };
-use ratatui_tea_examples::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
+use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
 use tracing::debug;
 mod common;
 

@@ -1,13 +1,13 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use rata_tea::{Application, Cmd, Runner, Sub, terminal::on_key_press};
 use ratatui::{Frame, widgets::Paragraph};
-use ratatui_tea_examples::{Application, Cmd, Sub, terminal::on_key_press};
 mod common;
 
 fn main() -> color_eyre::Result<()> {
     common::initialize_logging()?;
     let tea = Application::new(Model::new, Model::update, Model::view)
         .subscriptions(Model::subscriptions);
-    ratatui_tea_examples::Runner::default().run(tea)?;
+    Runner::default().run(tea)?;
     Ok(())
 }
 

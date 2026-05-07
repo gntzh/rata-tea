@@ -8,7 +8,7 @@ use ratatui::{
     text::{Line, Text, ToSpan},
     widgets::Paragraph,
 };
-use ratatui_tea_examples::{
+use rata_tea::{
     Action, Application, Cmd, Runner, Sub, terminal::on_key_press, time::every,
 };
 mod common;

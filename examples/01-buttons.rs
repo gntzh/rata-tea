@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Frame, widgets::Paragraph};
-use ratatui_tea_examples::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
+use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
 mod common;
 
 fn main() -> color_eyre::Result<()> {
