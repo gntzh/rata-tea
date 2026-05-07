@@ -47,7 +47,7 @@ impl Model {
                     Ok(resp) => resp.text().await,
                     Err(err) => Err(err),
                 };
-                dispatch(Msg::GoText(res));
+                dispatch(Msg::GoText(res)).await;
             }),
         )
     }

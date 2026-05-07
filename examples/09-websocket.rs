@@ -146,11 +146,11 @@ pub mod ws {
         let f = |dispatch: BoxDispatch<Msg>| async move {
             let mut websocket = match tokio_tungstenite::connect_async(url.as_ref()).await {
                 Ok((wss, _)) => {
-                    dispatch(Msg::Connected(tx));
+                    dispatch(Msg::Connected(tx)).await;
                     wss
                 }
                 Err(_) => {
-                    dispatch(Msg::ConnectFailed);
+                    dispatch(Msg::ConnectFailed).await;
                     return;
                 }
             };
@@ -160,11 +160,11 @@ pub mod ws {
                     received =  websocket.select_next_some() => {
                         match received {
                             Ok(tungstenite::Message::Text(s) ) => {
-                                dispatch(Msg::Received(s.to_string()));
+                                dispatch(Msg::Received(s.to_string())).await;
                             }
                             Ok(_) => {},
                             Err(_) => {
-                                dispatch(Msg::Disconnected);
+                                dispatch(Msg::Disconnected).await;
                                 break;
                             }
                         }
@@ -177,8 +177,8 @@ pub mod ws {
                             },
                             Action::Send(s) => {
                                 if let Err(err) =  websocket.send(tungstenite::Message::Text(s.into())).await {
-                                    dispatch(Msg::SendFailed(err.to_string()));
-                                    dispatch(Msg::Disconnected);
+                                    dispatch(Msg::SendFailed(err.to_string())).await;
+                                    dispatch(Msg::Disconnected).await;
                                     break;
                                 };
                             },

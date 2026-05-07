@@ -5,8 +5,8 @@ use dashmap::DashMap;
 use tracing::{error, trace};
 
 pub use core::*;
-pub use runner::{Action, Runner};
 pub use tea::*;
+pub use runner::{Action, Runner};
 
 mod core;
 mod runner;
@@ -33,17 +33,16 @@ pub mod time {
         struct Every {
             interval: Duration,
         }
-        Sub::make(Every { interval }, move |Every { interval }, dispatch| {
-            let (fut, handle) = futures::future::abortable(async move {
+        Sub::make(
+            Every { interval },
+            move |Every { interval }, dispatch| async move {
                 let mut timer = tokio::time::interval(interval);
                 loop {
                     let instant = timer.tick().await;
-                    dispatch(instant.into_std())
+                    dispatch(instant.into_std()).await
                 }
-            });
-            tokio::spawn(fut);
-            handle
-        })
+            },
+        )
     }
 }
 
@@ -61,50 +60,46 @@ pub mod terminal {
         Sub::make(
             (),
             |(), dispatch: Box<dyn Dispatch<TerminalEvent> + 'static>| {
-                let rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
-                let (fut, handle) = futures::future::abortable(async move {
+                let mut rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
+                async move {
                     loop {
                         match rx.recv().await {
-                            Ok(event) => {
-                                dispatch(event);
+                            Some(event) => {
+                                dispatch(event).await;
                             }
-                            Err(err) => warn!(?err, "Event is closed by Sender"),
+                            None => warn!("Event channel is closed by Sender"),
                         }
                     }
-                });
-                tokio::spawn(fut);
-                handle
+                }
             },
         )
     }
 
     pub fn on_key_event() -> Sub<KeyEvent> {
         Sub::make((), |(), dispatch| {
-            let rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
-            let (fut, handle) = futures::future::abortable(async move {
+            let mut rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
+            async move {
                 loop {
                     match rx.recv().await {
-                        Ok(event) => {
+                        Some(event) => {
                             if let TerminalEvent::Key(event @ KeyEvent { .. }) = event {
-                                dispatch(event);
+                                dispatch(event).await;
                             }
                         }
-                        Err(err) => warn!(?err, "Event is closed by Sender"),
+                        None => warn!("Event channel is closed by Sender"),
                     }
                 }
-            });
-            tokio::spawn(fut);
-            handle
+            }
         })
     }
 
     pub fn on_key_press() -> Sub<KeyEvent> {
         Sub::make((), |(), dispatch| {
-            let rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
-            let (fut, handle) = futures::future::abortable(async move {
+            let mut rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
+            async move {
                 loop {
                     match rx.recv().await {
-                        Ok(event) => {
+                        Some(event) => {
                             if let TerminalEvent::Key(
                                 event @ KeyEvent {
                                     kind: KeyEventKind::Press,
@@ -112,15 +107,13 @@ pub mod terminal {
                                 },
                             ) = event
                             {
-                                dispatch(event);
+                                dispatch(event).await;
                             }
                         }
-                        Err(err) => warn!(?err, "Event is closed by Sender"),
+                        None => warn!("Event channel is closed by Sender"),
                     }
                 }
-            });
-            tokio::spawn(fut);
-            handle
+            }
         })
     }
 }
@@ -131,7 +124,7 @@ pub struct EventBus {
     map: DashMap<TypeId, Box<dyn std::any::Any + Send + Sync>>,
 }
 
-type BusListener<E> = (async_channel::Sender<E>, Option<fn(&E) -> bool>);
+type BusListener<E> = (tokio::sync::mpsc::Sender<E>, Option<fn(&E) -> bool>);
 
 #[derive(Default)]
 struct Bus<E: OwnedSend> {
@@ -147,8 +140,8 @@ impl EventBus {
     pub fn subscribe<E: OwnedSend>(
         &self,
         filter: impl Into<Option<fn(&E) -> bool>>,
-    ) -> async_channel::Receiver<E> {
-        let (tx, rx) = async_channel::bounded(100);
+    ) -> tokio::sync::mpsc::Receiver<E> {
+        let (tx, rx) = tokio::sync::mpsc::channel(100);
         let mut entry = self
             .map
             .entry(TypeId::of::<E>())
@@ -156,14 +149,14 @@ impl EventBus {
         let bus = entry.downcast_mut::<Bus<E>>().expect("got by TypeId");
         bus.listeners.push((tx, filter.into()));
         trace!(
-            "Adding a subscriber of {:?}, the total number will be {}.",
+            "Adding a subscriber of Event<{:?}>, the total number will be {}.",
             TypeId::of::<E>(),
             bus.listeners.len()
         );
         rx
     }
 
-    pub fn publish<E: OwnedSend + Clone>(&self, event: E) {
+    pub async fn publish<E: OwnedSend + Clone>(&self, event: E) {
         if let Some(bus) = self
             .map
             .get_mut(&TypeId::of::<E>())
@@ -181,49 +174,18 @@ impl EventBus {
                 .split_last()
             {
                 fn logging_send_event_result<E>(
-                    rst: Result<Option<E>, async_channel::SendError<E>>,
+                    rst: Result<(), tokio::sync::mpsc::error::SendError<E>>,
                 ) {
-                    match rst {
-                        Ok(Some(_)) => error!(
-                            "too many event in channel, drop an oldest msg. This should not happen here."
-                        ),
-                        Err(_) => error!("event channel was closed unexpectedly."),
-                        Ok(None) => (),
+                    if let Err(err) = rst {
+                        error!(?err, "event channel was closed unexpectedly.")
                     };
                 }
                 for tx in rest {
                     trace!("cloning event of {:?}", TypeId::of::<E>());
-                    logging_send_event_result(tx.0.force_send(event.clone()))
+                    logging_send_event_result(tx.0.send(event.clone()).await)
                 }
-                logging_send_event_result(last.0.force_send(event.clone()));
+                logging_send_event_result(last.0.send(event.clone()).await);
             }
         }
     }
 }
-
-// pub struct Task<T, E>(Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>);
-
-// impl<T: 'static, E: 'static> Task<T, E> {
-//     pub fn future(fut: impl Future<Output = Result<T, E>> + Send + 'static) -> Self {
-//         Self(Box::pin(fut))
-//     }
-
-//     /// run a
-//     pub fn attempt<Msg, F>(self, mapper: F) -> Cmd<Msg>
-//     where
-//         F: FnOnce(Result<T, E>) -> Msg + Send + 'static,
-//         Msg: OwnedSend,
-//     {
-//         Cmd::future(async move { mapper(self.0.await) })
-//     }
-// }
-
-// impl<T: 'static> Task<T, Infallible> {
-//     pub fn perform<Msg, F>(self, mapper: F) -> Cmd<Msg>
-//     where
-//         F: FnOnce(T) -> Msg + Send + 'static,
-//         Msg: OwnedSend,
-//     {
-//         Cmd::future(async move { mapper(self.0.await.expect("unwrap from an infallible result")) })
-//     }
-// }

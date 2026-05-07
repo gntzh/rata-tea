@@ -1,4 +1,4 @@
-use std::{any::TypeId, hash::Hasher as _, marker::PhantomData};
+use std::{any::TypeId, hash::Hash, hash::Hasher as _, marker::PhantomData};
 
 use futures::{FutureExt as _, future::BoxFuture};
 pub type Hasher = std::hash::DefaultHasher;
@@ -6,10 +6,8 @@ pub type Hasher = std::hash::DefaultHasher;
 pub trait OwnedSend: Send + 'static {}
 impl<T: Send + 'static> OwnedSend for T {}
 
-pub trait Dispatch<Msg>: Fn(Msg) + Send + 'static {}
-impl<F, Msg> Dispatch<Msg> for F where F: Fn(Msg) + Send + 'static {}
-
-pub type AbortHandle = futures::future::AbortHandle;
+pub trait Dispatch<Msg>: Fn(Msg) -> BoxFuture<'static, ()> + Send + 'static {}
+impl<F, Msg> Dispatch<Msg> for F where F: Fn(Msg) -> BoxFuture<'static, ()> + Send + 'static {}
 
 pub struct Cmd<Msg: OwnedSend>(pub Vec<BoxCommand<Msg>>);
 pub trait Command<Msg: OwnedSend> {
@@ -119,7 +117,12 @@ impl<Msg: OwnedSend> Cmd<Msg> {
     }
 }
 
-pub struct Sub<Msg: OwnedSend>(pub Vec<(SubId, Box<dyn SubFactory<Msg>>)>);
+pub struct Sub<Msg: OwnedSend>(pub Vec<(SubId, BoxSubFactory<Msg>)>);
+pub trait SubFactory<Msg: OwnedSend> {
+    fn create(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()>;
+}
+pub type BoxSubFactory<Msg> = Box<dyn SubFactory<Msg>>;
+
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub enum SubId {
     Str(&'static str),
@@ -152,8 +155,6 @@ impl From<u64> for SubId {
         Self::Hash(value)
     }
 }
-
-use std::hash::Hash;
 
 impl SubId {
     fn with(self, id: impl Into<SubId>) -> Self {
@@ -193,10 +194,6 @@ impl SubId {
     }
 }
 
-pub trait SubFactory<Msg: OwnedSend> {
-    fn create(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg>>) -> AbortHandle;
-}
-
 impl<Msg: OwnedSend> Sub<Msg> {
     pub fn none() -> Self {
         Self(Vec::new())
@@ -222,7 +219,7 @@ impl<Msg: OwnedSend> Sub<Msg> {
             Msg2: OwnedSend,
             F: Fn(Msg) -> Msg2 + Send + 'static,
         {
-            fn create(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg2>>) -> AbortHandle {
+            fn create(self: Box<Self>, dispatch: BoxDispatch<Msg2>) -> BoxFuture<'static, ()> {
                 let mapper = self.mapper;
 
                 self.inner.create(Box::new(move |msg| {
@@ -266,14 +263,16 @@ impl<Msg: OwnedSend> Sub<Msg> {
             Msg2: OwnedSend,
             F: Fn(Msg) -> Option<Msg2> + Send + 'static,
         {
-            fn create(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg2>>) -> AbortHandle {
+            fn create(self: Box<Self>, dispatch: BoxDispatch<Msg2>) -> BoxFuture<'static, ()> {
                 let mapper = self.mapper;
-
-                self.inner.create(Box::new(move |msg| {
-                    if let Some(msg2) = mapper(msg) {
+                let dispatch2 = move |msg| {
+                    if let Some(msg2) = (mapper)(msg) {
                         dispatch(msg2)
+                    } else {
+                        futures::future::ready(()).boxed()
                     }
-                }))
+                };
+                self.inner.create(Box::new(dispatch2))
             }
         }
         let factories = self
@@ -298,27 +297,30 @@ impl<Msg: OwnedSend> Sub<Msg> {
         self.0.len()
     }
     /// `input` and `TypeId::of<F>` will be used as the sub identifier
-    pub fn make<I, F>(input: I, stream_maker: F) -> Self
+    pub fn make<I, F, Fut>(input: I, stream_maker: F) -> Self
     where
         I: Hash + 'static,
-        F: FnOnce(I, Box<dyn Dispatch<Msg>>) -> AbortHandle + 'static,
+        F: FnOnce(I, Box<dyn Dispatch<Msg>>) -> Fut + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
-        struct MakeSub<I, F, Msg>
+        struct MakeSub<I, F, Fut, Msg>
         where
-            F: FnOnce(I, Box<dyn Dispatch<Msg>>) -> AbortHandle + 'static,
+            F: FnOnce(I, Box<dyn Dispatch<Msg>>) -> Fut,
+            Fut: Future<Output = ()> + Send + 'static,
         {
             input: I,
             stream_maker: F,
             _msg: PhantomData<Msg>,
         }
-        impl<I, F, Msg> SubFactory<Msg> for MakeSub<I, F, Msg>
+        impl<I, F, Fut, Msg> SubFactory<Msg> for MakeSub<I, F, Fut, Msg>
         where
             I: Hash + 'static,
-            F: FnOnce(I, Box<dyn Dispatch<Msg>>) -> AbortHandle + 'static,
             Msg: OwnedSend,
+            F: FnOnce(I, Box<dyn Dispatch<Msg>>) -> Fut,
+            Fut: Future<Output = ()> + Send + 'static,
         {
-            fn create(self: Box<Self>, dispatch: Box<dyn Dispatch<Msg>>) -> AbortHandle {
-                (self.stream_maker)(self.input, dispatch)
+            fn create(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()> {
+                ((self.stream_maker)(self.input, dispatch)).boxed()
             }
         }
 

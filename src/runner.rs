@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
+use tokio::task::JoinHandle;
 use tracing::{error, trace, warn};
 
-use crate::{
-    AbortHandle, Cmd, Dispatch, OwnedSend, Sub, SubId, Tick, terminal::GLOBAL_EVENT_BUS,
-};
+use crate::{Cmd, Dispatch, OwnedSend, Sub, SubId, Tick, terminal::GLOBAL_EVENT_BUS};
 
 pub struct Runner<Tea: crate::Tea> {
     frame_rate: f64,
@@ -34,17 +33,17 @@ impl<Tea: crate::Tea> Runner<Tea> {
         color_eyre::install()?;
         let mut tui = ratatui::try_init()?;
 
-        let (msg_tx, msg_rx) = async_channel::bounded::<Tea::Msg>(100);
+        let (msg_tx, msg_rx) = async_channel::bounded::<Tea::Msg>(1024);
         let dispatch = {
-            let tx = msg_tx.clone();
             move |msg| {
-                match tx.force_send(msg) {
-                    Ok(Some(_)) => warn!(
-                        "too many msg in channel, drop an oldest msg. please consider increasing the capacity of the channel."
-                    ),
-                    Err(_) => error!("msg channel was closed unexpectedly"),
-                    Ok(None) => (),
-                };
+                let tx = msg_tx.clone();
+                (async move {
+                    match tx.send(msg).await {
+                        Ok(()) => (),
+                        Err(_) => error!("msg channel was closed unexpectedly"),
+                    }
+                })
+                .boxed()
             }
         };
         let (mut model, cmd) = tea.init();
@@ -86,12 +85,11 @@ impl<Tea: crate::Tea> Runner<Tea> {
                         tui.draw(|frame| tea.view(&mut model, frame)).expect("terminal draw failed");
                         dirty = false;
                     }
-                    GLOBAL_EVENT_BUS.publish(Tick);
+                    GLOBAL_EVENT_BUS.publish(Tick).await;
                 }
                 Some(term_event) = terminal_event_stream.next() => {
-                    // GLOBAL_EVENT_BUS.publish(term_event);
                     match term_event {
-                        Ok(term_event) => GLOBAL_EVENT_BUS.publish(term_event),
+                        Ok(term_event) => GLOBAL_EVENT_BUS.publish(term_event).await,
                         Err(err) => {
                             warn!(?err, "error reading terminal event");
                         }
@@ -103,10 +101,7 @@ impl<Tea: crate::Tea> Runner<Tea> {
         Ok(())
     }
 
-    fn spawn_cmd<Msg: OwnedSend>(
-        cmd: Cmd<Msg>,
-        dispatch: impl Dispatch<Msg> + Clone + 'static,
-    ) {
+    fn spawn_cmd<Msg: OwnedSend>(cmd: Cmd<Msg>, dispatch: impl Dispatch<Msg> + Clone + 'static) {
         for cmd in cmd.0 {
             tokio::spawn(cmd.execute(Box::new(dispatch.clone())));
         }
@@ -114,7 +109,7 @@ impl<Tea: crate::Tea> Runner<Tea> {
 
     fn rebuild_sub<Msg: OwnedSend>(
         sub: Sub<Msg>,
-        dispatch: impl Dispatch<Msg> + Send + Clone + 'static,
+        dispatch: impl Dispatch<Msg> + Clone + 'static,
         active_sub: &mut HashMap<SubId, DropHandle>,
     ) {
         let mut new = HashMap::new();
@@ -123,7 +118,8 @@ impl<Tea: crate::Tea> Runner<Tea> {
                 new.insert(id, stream);
             } else {
                 trace!(?id, "creating new subscription stream");
-                new.insert(id, DropHandle(factory.create(Box::new(dispatch.clone()))));
+                let handle = tokio::spawn(factory.create(Box::new(dispatch.clone())));
+                new.insert(id, DropHandle(handle));
             }
         }
         *active_sub = new;
@@ -139,7 +135,7 @@ impl<Tea: crate::Tea> Default for Runner<Tea> {
     }
 }
 
-pub struct DropHandle(AbortHandle);
+struct DropHandle(JoinHandle<()>);
 
 impl Drop for DropHandle {
     fn drop(&mut self) {

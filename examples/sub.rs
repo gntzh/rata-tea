@@ -67,7 +67,7 @@ impl Model {
                 _ => None,
             },
         })];
-        if !self.count.is_multiple_of(5) {
+        if [3, 4, 5].contains(&(self.count % 10)) {
             subs.push(on_term_event().filter_map(|_| None));
         }
         Sub::batch(subs)
