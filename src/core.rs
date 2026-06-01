@@ -7,15 +7,14 @@ pub trait OwnedSend: Send + 'static {}
 impl<T: Send + 'static> OwnedSend for T {}
 
 pub trait Dispatch<Msg>: Fn(Msg) -> BoxFuture<'static, ()> + Send + 'static {}
+pub type BoxDispatch<Msg> = Box<dyn Dispatch<Msg> + Send + 'static>;
 impl<F, Msg> Dispatch<Msg> for F where F: Fn(Msg) -> BoxFuture<'static, ()> + Send + 'static {}
 
 pub struct Cmd<Msg: OwnedSend>(pub Vec<BoxCommand<Msg>>);
 pub trait Command<Msg: OwnedSend> {
     fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()>;
 }
-
 pub type BoxCommand<Msg> = Box<dyn Command<Msg> + Send + 'static>;
-pub type BoxDispatch<Msg> = Box<dyn Dispatch<Msg> + Send + 'static>;
 
 impl<Msg: OwnedSend> Cmd<Msg> {
     pub fn none() -> Self {
@@ -109,11 +108,34 @@ impl<Msg: OwnedSend> Cmd<Msg> {
         Self(vec![command])
     }
 
-    pub fn future<Fut>(fut: Fut) -> Self
+    pub fn effect<Fut>(fut: Fut) -> Self
     where
         Fut: Future<Output = ()> + Send + 'static,
     {
         Self::from_fn(|_: BoxDispatch<Msg>| fut)
+    }
+
+    pub fn perform<Fut>(fut: Fut) -> Self
+    where
+        Fut: Future<Output = Msg> + Send + 'static,
+    {
+        struct Perform<Fut>(Fut);
+
+        impl<Fut, Msg> Command<Msg> for Perform<Fut>
+        where
+            Fut: Future<Output = Msg> + Send + 'static,
+            Msg: OwnedSend,
+        {
+            fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()> {
+                async move {
+                    let msg = self.0.await;
+                    dispatch(msg).await;
+                }
+                .boxed()
+            }
+        }
+
+        Self(vec![Box::new(Perform(fut))])
     }
 }
 

@@ -77,7 +77,7 @@ impl Model {
                 let sender = sender.clone();
                 let s = self.draft.lines().join("");
                 self.draft.clear();
-                return Cmd::future({
+                return Cmd::effect({
                     async move {
                         let _ = sender.send(ws::Action::Send(s)).await;
                     }
