@@ -22,8 +22,8 @@ rata-tea = "0.1"
 
 ```rust
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{Frame, widgets::Paragraph};
 use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
+use ratatui::{Frame, widgets::Paragraph};
 
 fn main() -> color_eyre::Result<()> {
     let app = Application::new(Model::new, Model::update, Model::view)
@@ -84,11 +84,13 @@ impl Model {
         })
     }
 
-    fn view(&mut self, frame: &mut Frame) {
-        frame.render_widget(
-            Paragraph::new(format!("Count: {}", self.count)),
-            frame.area(),
-        );
+    fn view(&mut self) -> impl FnOnce(&mut Frame) {
+        move |frame| {
+            frame.render_widget(
+                Paragraph::new(format!("Count: {}", self.count)),
+                frame.area(),
+            );
+        }
     }
 }
 ```

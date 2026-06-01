@@ -16,7 +16,10 @@ pub enum Action<Msg> {
     Quit,
 }
 
-impl<Tea: crate::Tea> Runner<Tea> {
+impl<Tea: crate::Tea> Runner<Tea>
+where
+    for<'a> Tea::View<'a>: FnOnce(&mut ratatui::Frame),
+{
     pub fn msg_to_action(self, msg_to_action: fn(Tea::Msg) -> Action<Tea::Msg>) -> Self {
         Self {
             msg_to_action,
@@ -82,7 +85,8 @@ impl<Tea: crate::Tea> Runner<Tea> {
                 _tick = ticker.tick() => {
                     if dirty {
                         trace!("drawing frame");
-                        tui.draw(|frame| tea.view(&mut model, frame)).expect("terminal draw failed");
+                        let view = tea.view(&mut model);
+                        tui.draw(view).expect("terminal draw failed");
                         dirty = false;
                     }
                     GLOBAL_EVENT_BUS.publish(Tick).await;

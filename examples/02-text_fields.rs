@@ -70,13 +70,15 @@ impl Model {
         })
     }
 
-    fn view(&mut self, frame: &mut Frame) {
-        let layout = Layout::vertical([Constraint::Length(3), Constraint::Length(1)]);
-        let [input_area, display_area] = frame.area().layout(&layout);
-        frame.render_widget(&self.textarea, input_area);
-        frame.render_widget(
-            Paragraph::new(self.textarea.lines()[0].to_owned()),
-            display_area,
-        );
+    fn view(&mut self) -> impl FnOnce(&mut Frame) {
+        move |frame| {
+            let layout = Layout::vertical([Constraint::Length(3), Constraint::Length(1)]);
+            let [input_area, display_area] = frame.area().layout(&layout);
+            frame.render_widget(&self.textarea, input_area);
+            frame.render_widget(
+                Paragraph::new(self.textarea.lines()[0].to_owned()),
+                display_area,
+            );
+        }
     }
 }

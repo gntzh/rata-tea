@@ -94,18 +94,20 @@ impl Model {
         })
     }
 
-    fn view(&mut self, frame: &mut Frame) {
-        let (text, scroll) = match self {
-            Model::Loading => ("Loading...", 0),
-            Model::Failure => ("I was unable to load your book.", 0),
-            Model::Success((s, scroll)) => (s.as_str(), *scroll),
-        };
-        debug!(scroll);
-        frame.render_widget(
-            Paragraph::new(text)
-                .scroll((scroll, 0))
-                .wrap(Wrap::default()),
-            frame.area(),
-        );
+    fn view(&mut self) -> impl FnOnce(&mut Frame) {
+        move |frame| {
+            let (text, scroll) = match self {
+                Model::Loading => ("Loading...", 0),
+                Model::Failure => ("I was unable to load your book.", 0),
+                Model::Success((s, scroll)) => (s.as_str(), *scroll),
+            };
+            debug!(scroll);
+            frame.render_widget(
+                Paragraph::new(text)
+                    .scroll((scroll, 0))
+                    .wrap(Wrap::default()),
+                frame.area(),
+            );
+        }
     }
 }

@@ -81,16 +81,18 @@ impl Model {
         Cmd::none()
     }
 
-    fn view(&mut self, frame: &mut Frame) {
-        frame.render_widget(
-            Paragraph::new(Text::from(vec![
-                Line::from(format!("<p> to {}", if self.run { "pause" } else { "run" })),
-                Line::from(vec![
-                    self.time.format("%H:%M:").to_span(),
-                    self.time.format("%S").to_span().style(Style::new().red()),
-                ]),
-            ])),
-            frame.area(),
-        );
+    fn view(&mut self) -> impl FnOnce(&mut Frame) {
+        move |frame| {
+            frame.render_widget(
+                Paragraph::new(Text::from(vec![
+                    Line::from(format!("<p> to {}", if self.run { "pause" } else { "run" })),
+                    Line::from(vec![
+                        self.time.format("%H:%M:").to_span(),
+                        self.time.format("%S").to_span().style(Style::new().red()),
+                    ]),
+                ])),
+                frame.area(),
+            );
+        }
     }
 }

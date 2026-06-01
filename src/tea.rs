@@ -1,5 +1,3 @@
-use ratatui::Frame;
-
 use std::marker::PhantomData;
 
 use crate::core::*;
@@ -7,6 +5,9 @@ use crate::core::*;
 pub trait Tea {
     type Model;
     type Msg: Send + 'static;
+    type View<'a>
+    where
+        Self::Model: 'a;
 
     fn init(&self) -> (Self::Model, Cmd<Self::Msg>);
 
@@ -20,7 +21,7 @@ pub trait Tea {
     /// render model to the terminal.
     ///
     /// In ratatui, there are [`ratatui::widgets::StatefulWidget`]s which require a mutable reference to state during render.
-    fn view(&self, model: &mut Self::Model, frame: &mut Frame);
+    fn view<'a>(&self, model: &'a mut Self::Model) -> Self::View<'a>;
 
     fn subscriptions(&self, _model: &Self::Model) -> Sub<Self::Msg> {
         Sub::none()
@@ -73,17 +74,22 @@ where
     }
 }
 
-pub trait ViewFn<Model, Msg: Send + 'static> {
-    fn view(&self, model: &mut Model, frame: &mut Frame);
+pub trait ViewFn<'a, Model, Msg: Send + 'static> {
+    type View;
+
+    fn view(&self, model: &'a mut Model) -> Self::View;
 }
 
-impl<F, Model, Msg> ViewFn<Model, Msg> for F
+impl<'a, F, Model, View, Msg> ViewFn<'a, Model, Msg> for F
 where
-    F: Fn(&mut Model, &mut Frame),
+    Model: 'a,
+    F: Fn(&'a mut Model) -> View,
     Msg: Send + 'static,
 {
-    fn view(&self, model: &mut Model, frame: &mut Frame) {
-        self(model, frame)
+    type View = View;
+
+    fn view(&self, model: &'a mut Model) -> Self::View {
+        self(model)
     }
 }
 
@@ -111,7 +117,7 @@ pub struct Application<Model, Msg: Send + 'static, I, U, V, S = ()>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    V: ViewFn<Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg>,
     S: SubFn<Model, Msg>,
 {
     pub(crate) init: I,
@@ -126,12 +132,15 @@ impl<Model, Msg: Send + 'static, I, U, V, S> Tea for Application<Model, Msg, I, 
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    V: ViewFn<Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg>,
     S: SubFn<Model, Msg>,
 {
     type Model = Model;
-
     type Msg = Msg;
+    type View<'a>
+        = <V as ViewFn<'a, Model, Msg>>::View
+    where
+        Model: 'a;
 
     fn init(&self) -> (Self::Model, Cmd<Self::Msg>) {
         self.init.init()
@@ -141,8 +150,8 @@ where
         self.update.update(model, msg)
     }
 
-    fn view(&self, model: &mut Self::Model, frame: &mut Frame) {
-        self.view.view(model, frame);
+    fn view<'a>(&self, model: &'a mut Self::Model) -> Self::View<'a> {
+        self.view.view(model)
     }
 
     fn subscriptions(&self, model: &Self::Model) -> Sub<Self::Msg> {
@@ -154,7 +163,7 @@ impl<Model, Msg: Send + 'static, I, U, V> Application<Model, Msg, I, U, V, ()>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    V: ViewFn<Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg>,
 {
     pub fn new(init: I, update: U, view: V) -> Self {
         Self {
@@ -172,7 +181,7 @@ impl<Model, Msg: Send + 'static, I, U, V, S> Application<Model, Msg, I, U, V, S>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    V: ViewFn<Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg>,
     S: SubFn<Model, Msg>,
 {
     pub fn subscriptions<S2: Fn(&Model) -> Sub<Msg>>(
