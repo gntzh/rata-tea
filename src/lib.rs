@@ -5,8 +5,8 @@ use dashmap::DashMap;
 use tracing::{error, trace};
 
 pub use core::*;
-pub use tea::*;
 pub use runner::{Action, Runner};
+pub use tea::*;
 
 mod core;
 mod runner;
