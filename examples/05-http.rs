@@ -1,9 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
 use ratatui::{
     Frame,
     widgets::{Paragraph, Wrap},
 };
-use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
 use tracing::debug;
 mod common;
 

@@ -2,14 +2,12 @@ use std::time::Duration;
 
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press, time::every};
 use ratatui::{
     Frame,
     style::Style,
     text::{Line, Text, ToSpan},
     widgets::Paragraph,
-};
-use rata_tea::{
-    Action, Application, Cmd, Runner, Sub, terminal::on_key_press, time::every,
 };
 mod common;
 
