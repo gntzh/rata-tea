@@ -4,20 +4,17 @@ use futures::{FutureExt as _, future::BoxFuture};
 
 type Hasher = std::hash::DefaultHasher;
 
-pub trait OwnedSend: Send + 'static {}
-impl<T: Send + 'static> OwnedSend for T {}
-
 pub trait Dispatch<Msg>: Fn(Msg) -> BoxFuture<'static, ()> + Send + 'static {}
 pub type BoxDispatch<Msg> = Box<dyn Dispatch<Msg> + Send + 'static>;
 impl<F, Msg> Dispatch<Msg> for F where F: Fn(Msg) -> BoxFuture<'static, ()> + Send + 'static {}
 
-pub struct Cmd<Msg: OwnedSend>(pub Vec<BoxCommand<Msg>>);
-pub trait Command<Msg: OwnedSend> {
+pub struct Cmd<Msg: Send + 'static>(pub Vec<BoxCommand<Msg>>);
+pub trait Command<Msg: Send + 'static> {
     fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()>;
 }
 pub type BoxCommand<Msg> = Box<dyn Command<Msg> + Send + 'static>;
 
-impl<Msg: OwnedSend> Cmd<Msg> {
+impl<Msg: Send + 'static> Cmd<Msg> {
     pub fn none() -> Self {
         Self(Vec::new())
     }
@@ -29,13 +26,13 @@ impl<Msg: OwnedSend> Cmd<Msg> {
     pub fn map<F, Msg2>(self, mapper: F) -> Cmd<Msg2>
     where
         F: Fn(Msg) -> Msg2 + Send + Clone + 'static,
-        Msg2: OwnedSend,
+        Msg2: Send + 'static,
     {
         struct MapCommand<F, Msg, Msg2>
         where
             F: Fn(Msg) -> Msg2 + Send + Clone + 'static,
-            Msg: OwnedSend,
-            Msg2: OwnedSend,
+            Msg: Send + 'static,
+            Msg2: Send + 'static,
         {
             inner: BoxCommand<Msg>,
             mapper: F,
@@ -43,8 +40,8 @@ impl<Msg: OwnedSend> Cmd<Msg> {
         impl<F, Msg, Msg2> Command<Msg2> for MapCommand<F, Msg, Msg2>
         where
             F: Fn(Msg) -> Msg2 + Send + Clone + 'static,
-            Msg: OwnedSend,
-            Msg2: OwnedSend,
+            Msg: Send + 'static,
+            Msg2: Send + 'static,
         {
             fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg2>) -> BoxFuture<'static, ()> {
                 let mapper = self.mapper;
@@ -70,7 +67,7 @@ impl<Msg: OwnedSend> Cmd<Msg> {
     }
 }
 
-impl<Msg: OwnedSend> Cmd<Msg> {
+impl<Msg: Send + 'static> Cmd<Msg> {
     pub fn size_hint(&self) -> usize {
         self.0.len()
     }
@@ -125,7 +122,7 @@ impl<Msg: OwnedSend> Cmd<Msg> {
         impl<Fut, Msg> Command<Msg> for Perform<Fut>
         where
             Fut: Future<Output = Msg> + Send + 'static,
-            Msg: OwnedSend,
+            Msg: Send + 'static,
         {
             fn execute(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()> {
                 async move {
@@ -140,8 +137,8 @@ impl<Msg: OwnedSend> Cmd<Msg> {
     }
 }
 
-pub struct Sub<Msg: OwnedSend>(pub Vec<(SubId, BoxSubFactory<Msg>)>);
-pub trait SubFactory<Msg: OwnedSend> {
+pub struct Sub<Msg: Send + 'static>(pub Vec<(SubId, BoxSubFactory<Msg>)>);
+pub trait SubFactory<Msg: Send + 'static> {
     fn create(self: Box<Self>, dispatch: BoxDispatch<Msg>) -> BoxFuture<'static, ()>;
 }
 pub type BoxSubFactory<Msg> = Box<dyn SubFactory<Msg>>;
@@ -217,7 +214,7 @@ impl SubId {
     }
 }
 
-impl<Msg: OwnedSend> Sub<Msg> {
+impl<Msg: Send + 'static> Sub<Msg> {
     pub fn none() -> Self {
         Self(Vec::new())
     }
@@ -229,7 +226,7 @@ impl<Msg: OwnedSend> Sub<Msg> {
     pub fn map<F, Msg2>(self, mapper: F) -> Sub<Msg2>
     where
         F: Fn(Msg) -> Msg2 + Send + Clone + 'static,
-        Msg2: OwnedSend,
+        Msg2: Send + 'static,
     {
         struct Map<M, M2, F: Fn(M) -> M2> {
             inner: Box<dyn SubFactory<M>>,
@@ -238,8 +235,8 @@ impl<Msg: OwnedSend> Sub<Msg> {
 
         impl<Msg, Msg2, F> SubFactory<Msg2> for Map<Msg, Msg2, F>
         where
-            Msg: OwnedSend,
-            Msg2: OwnedSend,
+            Msg: Send + 'static,
+            Msg2: Send + 'static,
             F: Fn(Msg) -> Msg2 + Send + 'static,
         {
             fn create(self: Box<Self>, dispatch: BoxDispatch<Msg2>) -> BoxFuture<'static, ()> {
@@ -270,7 +267,7 @@ impl<Msg: OwnedSend> Sub<Msg> {
     pub fn filter_map<F, Msg2>(self, mapper: F) -> Sub<Msg2>
     where
         F: Fn(Msg) -> Option<Msg2> + Send + Clone + 'static,
-        Msg2: OwnedSend,
+        Msg2: Send + 'static,
     {
         struct FilterMap<Msg, Msg2, F>
         where
@@ -282,8 +279,8 @@ impl<Msg: OwnedSend> Sub<Msg> {
 
         impl<Msg, Msg2, F> SubFactory<Msg2> for FilterMap<Msg, Msg2, F>
         where
-            Msg: OwnedSend,
-            Msg2: OwnedSend,
+            Msg: Send + 'static,
+            Msg2: Send + 'static,
             F: Fn(Msg) -> Option<Msg2> + Send + 'static,
         {
             fn create(self: Box<Self>, dispatch: BoxDispatch<Msg2>) -> BoxFuture<'static, ()> {
@@ -315,7 +312,7 @@ impl<Msg: OwnedSend> Sub<Msg> {
     }
 }
 
-impl<Msg: OwnedSend> Sub<Msg> {
+impl<Msg: Send + 'static> Sub<Msg> {
     pub fn size_hint(&self) -> usize {
         self.0.len()
     }
@@ -338,7 +335,7 @@ impl<Msg: OwnedSend> Sub<Msg> {
         impl<I, F, Fut, Msg> SubFactory<Msg> for MakeSub<I, F, Fut, Msg>
         where
             I: Hash + 'static,
-            Msg: OwnedSend,
+            Msg: Send + 'static,
             F: FnOnce(I, Box<dyn Dispatch<Msg>>) -> Fut,
             Fut: Future<Output = ()> + Send + 'static,
         {

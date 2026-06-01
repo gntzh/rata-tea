@@ -6,7 +6,7 @@ use crate::core::*;
 
 pub trait Tea {
     type Model;
-    type Msg: OwnedSend;
+    type Msg: Send + 'static;
 
     fn init(&self) -> (Self::Model, Cmd<Self::Msg>);
 
@@ -27,14 +27,14 @@ pub trait Tea {
     }
 }
 
-pub trait InitFn<Model, Msg: OwnedSend> {
+pub trait InitFn<Model, Msg: Send + 'static> {
     fn init(&self) -> (Model, Cmd<Msg>);
 }
 
 impl<F, I, Model, Msg> InitFn<Model, Msg> for F
 where
     F: Fn() -> I,
-    Msg: OwnedSend,
+    Msg: Send + 'static,
     I: IntoInit<Model, Msg>,
 {
     fn init(&self) -> (Model, Cmd<Msg>) {
@@ -42,72 +42,72 @@ where
     }
 }
 
-pub trait IntoInit<Model, Msg: OwnedSend> {
+pub trait IntoInit<Model, Msg: Send + 'static> {
     /// Turns some type into the initial state of some [`Application`].
     fn into_init(self) -> (Model, Cmd<Msg>);
 }
 
-impl<Model, Msg: OwnedSend> IntoInit<Model, Msg> for (Model, Cmd<Msg>) {
+impl<Model, Msg: Send + 'static> IntoInit<Model, Msg> for (Model, Cmd<Msg>) {
     fn into_init(self) -> (Model, Cmd<Msg>) {
         self
     }
 }
 
-impl<Model, Msg: OwnedSend> IntoInit<Model, Msg> for Model {
+impl<Model, Msg: Send + 'static> IntoInit<Model, Msg> for Model {
     fn into_init(self) -> (Model, Cmd<Msg>) {
         (self, Cmd::none())
     }
 }
 
-pub trait UpdateFn<Model, Msg: OwnedSend> {
+pub trait UpdateFn<Model, Msg: Send + 'static> {
     fn update(&self, model: &mut Model, msg: Msg) -> Cmd<Msg>;
 }
 
 impl<F, Model, Msg> UpdateFn<Model, Msg> for F
 where
     F: Fn(&mut Model, Msg) -> Cmd<Msg>,
-    Msg: OwnedSend,
+    Msg: Send + 'static,
 {
     fn update(&self, model: &mut Model, msg: Msg) -> Cmd<Msg> {
         self(model, msg)
     }
 }
 
-pub trait ViewFn<Model, Msg: OwnedSend> {
+pub trait ViewFn<Model, Msg: Send + 'static> {
     fn view(&self, model: &mut Model, frame: &mut Frame);
 }
 
 impl<F, Model, Msg> ViewFn<Model, Msg> for F
 where
     F: Fn(&mut Model, &mut Frame),
-    Msg: OwnedSend,
+    Msg: Send + 'static,
 {
     fn view(&self, model: &mut Model, frame: &mut Frame) {
         self(model, frame)
     }
 }
 
-pub trait SubFn<Model, Msg: OwnedSend> {
+pub trait SubFn<Model, Msg: Send + 'static> {
     fn subscriptions(&self, model: &Model) -> Sub<Msg>;
 }
 
 impl<F, Model, Msg> SubFn<Model, Msg> for F
 where
     F: for<'a> Fn(&'a Model) -> Sub<Msg>,
-    Msg: OwnedSend,
+    Msg: Send + 'static,
 {
     fn subscriptions(&self, model: &Model) -> Sub<Msg> {
         self(model)
     }
 }
 
-impl<Model, Msg: OwnedSend> SubFn<Model, Msg> for () {
+impl<Model, Msg: Send + 'static> SubFn<Model, Msg> for () {
     fn subscriptions(&self, _model: &Model) -> Sub<Msg> {
         Sub::none()
     }
 }
 
-pub struct Application<Model, Msg: OwnedSend, I, U, V, S = ()>
+pub struct Application<Model, Msg: Send + 'static, I, U, V, S = ()>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
@@ -122,7 +122,7 @@ where
     _msg: PhantomData<Msg>,
 }
 
-impl<Model, Msg: OwnedSend, I, U, V, S> Tea for Application<Model, Msg, I, U, V, S>
+impl<Model, Msg: Send + 'static, I, U, V, S> Tea for Application<Model, Msg, I, U, V, S>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
@@ -150,7 +150,7 @@ where
     }
 }
 
-impl<Model, Msg: OwnedSend, I, U, V> Application<Model, Msg, I, U, V, ()>
+impl<Model, Msg: Send + 'static, I, U, V> Application<Model, Msg, I, U, V, ()>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
@@ -168,7 +168,7 @@ where
     }
 }
 
-impl<Model, Msg: OwnedSend, I, U, V, S> Application<Model, Msg, I, U, V, S>
+impl<Model, Msg: Send + 'static, I, U, V, S> Application<Model, Msg, I, U, V, S>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,

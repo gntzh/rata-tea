@@ -4,7 +4,7 @@ use futures::{FutureExt, StreamExt};
 use tokio::task::JoinHandle;
 use tracing::{error, trace, warn};
 
-use crate::{Cmd, Dispatch, OwnedSend, Sub, SubId, Tick, terminal::GLOBAL_EVENT_BUS};
+use crate::{Cmd, Dispatch, Sub, SubId, Tick, terminal::GLOBAL_EVENT_BUS};
 
 pub struct Runner<Tea: crate::Tea> {
     frame_rate: f64,
@@ -101,13 +101,16 @@ impl<Tea: crate::Tea> Runner<Tea> {
         Ok(())
     }
 
-    fn spawn_cmd<Msg: OwnedSend>(cmd: Cmd<Msg>, dispatch: impl Dispatch<Msg> + Clone + 'static) {
+    fn spawn_cmd<Msg: Send + 'static>(
+        cmd: Cmd<Msg>,
+        dispatch: impl Dispatch<Msg> + Clone + 'static,
+    ) {
         for cmd in cmd.0 {
             tokio::spawn(cmd.execute(Box::new(dispatch.clone())));
         }
     }
 
-    fn rebuild_sub<Msg: OwnedSend>(
+    fn rebuild_sub<Msg: Send + 'static>(
         sub: Sub<Msg>,
         dispatch: impl Dispatch<Msg> + Clone + 'static,
         active_sub: &mut HashMap<SubId, DropHandle>,

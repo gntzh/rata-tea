@@ -127,7 +127,7 @@ pub struct EventBus {
 type BusListener<E> = (tokio::sync::mpsc::Sender<E>, Option<fn(&E) -> bool>);
 
 #[derive(Default)]
-struct Bus<E: OwnedSend> {
+struct Bus<E: Send + 'static> {
     listeners: Vec<BusListener<E>>,
 }
 
@@ -137,7 +137,7 @@ impl EventBus {
     }
 
     /// Interior mutability
-    pub fn subscribe<E: OwnedSend>(
+    pub fn subscribe<E: Send + 'static>(
         &self,
         filter: impl Into<Option<fn(&E) -> bool>>,
     ) -> tokio::sync::mpsc::Receiver<E> {
@@ -156,7 +156,7 @@ impl EventBus {
         rx
     }
 
-    pub async fn publish<E: OwnedSend + Clone>(&self, event: E) {
+    pub async fn publish<E: Send + 'static + Clone>(&self, event: E) {
         if let Some(bus) = self
             .map
             .get_mut(&TypeId::of::<E>())
