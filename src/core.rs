@@ -1,7 +1,8 @@
 use std::{any::TypeId, hash::Hash, hash::Hasher as _, marker::PhantomData};
 
 use futures::{FutureExt as _, future::BoxFuture};
-pub type Hasher = std::hash::DefaultHasher;
+
+type Hasher = std::hash::DefaultHasher;
 
 pub trait OwnedSend: Send + 'static {}
 impl<T: Send + 'static> OwnedSend for T {}
