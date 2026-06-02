@@ -18,7 +18,7 @@ pub enum Action<Msg> {
 
 impl<Tea: crate::Tea> Runner<Tea>
 where
-    for<'a, 'frame> Tea::View<'a>: crate::Render<ratatui::Frame<'frame>>,
+    for<'a, 'ctx, 'frame> Tea::View<'a>: crate::Render<&'ctx mut ratatui::Frame<'frame>>,
 {
     pub fn msg_to_action(self, msg_to_action: fn(Tea::Msg) -> Action<Tea::Msg>) -> Self {
         Self {

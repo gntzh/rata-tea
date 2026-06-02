@@ -89,14 +89,14 @@ pub struct ReadonlyCallbackView<Ctx>(PhantomData<Ctx>);
 
 #[doc(hidden)]
 pub trait Render<Ctx> {
-    fn render(self, ctx: &mut Ctx);
+    fn render(self, ctx: Ctx);
 }
 
 impl<F, Ctx> Render<Ctx> for F
 where
-    F: FnOnce(&mut Ctx),
+    F: FnOnce(Ctx),
 {
-    fn render(self, ctx: &mut Ctx) {
+    fn render(self, ctx: Ctx) {
         self(ctx)
     }
 }
@@ -115,18 +115,18 @@ pub struct ReadonlyCallbackRender<'a, Model, F> {
 
 impl<'a, Model, F, Ctx> Render<Ctx> for CallbackRender<'a, Model, F>
 where
-    F: Fn(&'a mut Model, &mut Ctx),
+    F: Fn(&'a mut Model, Ctx),
 {
-    fn render(self, ctx: &mut Ctx) {
+    fn render(self, ctx: Ctx) {
         (self.view)(self.model, ctx)
     }
 }
 
 impl<'a, Model, F, Ctx> Render<Ctx> for ReadonlyCallbackRender<'a, Model, F>
 where
-    F: Fn(&'a Model, &mut Ctx),
+    F: Fn(&'a Model, Ctx),
 {
-    fn render(self, ctx: &mut Ctx) {
+    fn render(self, ctx: Ctx) {
         (self.view)(self.model, ctx)
     }
 }
@@ -166,7 +166,7 @@ where
 impl<'a, F, Model, Msg, Ctx> ViewFn<'a, Model, Msg, CallbackView<Ctx>> for F
 where
     Model: 'a,
-    F: Fn(&'a mut Model, &mut Ctx) + 'a,
+    F: Fn(&'a mut Model, Ctx) + 'a,
     Msg: Send + 'static,
     Ctx: 'a,
 {
@@ -180,7 +180,7 @@ where
 impl<'a, F, Model, Msg, Ctx> ViewFn<'a, Model, Msg, ReadonlyCallbackView<Ctx>> for F
 where
     Model: 'a,
-    F: Fn(&'a Model, &mut Ctx) + 'a,
+    F: Fn(&'a Model, Ctx) + 'a,
     Msg: Send + 'static,
     Ctx: 'a,
 {
