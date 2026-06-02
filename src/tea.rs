@@ -7,7 +7,8 @@ pub trait Tea {
     type Msg: Send + 'static;
     type View<'a>
     where
-        Self::Model: 'a;
+        Self::Model: 'a,
+        Self: 'a;
 
     fn init(&self) -> (Self::Model, Cmd<Self::Msg>);
 
@@ -21,7 +22,7 @@ pub trait Tea {
     /// render model to the terminal.
     ///
     /// In ratatui, there are [`ratatui::widgets::StatefulWidget`]s which require a mutable reference to state during render.
-    fn view<'a>(&self, model: &'a mut Self::Model) -> Self::View<'a>;
+    fn view<'a>(&'a self, model: &'a mut Self::Model) -> Self::View<'a>;
 
     fn subscriptions(&self, _model: &Self::Model) -> Sub<Self::Msg> {
         Sub::none()
@@ -74,13 +75,48 @@ where
     }
 }
 
-pub trait ViewFn<'a, Model, Msg: Send + 'static> {
-    type View;
+#[doc(hidden)]
+pub struct DirectView;
 
-    fn view(&self, model: &'a mut Model) -> Self::View;
+#[doc(hidden)]
+pub struct CallbackView<Ctx>(PhantomData<Ctx>);
+
+#[doc(hidden)]
+pub trait Render<Ctx> {
+    fn render(self, ctx: &mut Ctx);
 }
 
-impl<'a, F, Model, View, Msg> ViewFn<'a, Model, Msg> for F
+impl<F, Ctx> Render<Ctx> for F
+where
+    F: FnOnce(&mut Ctx),
+{
+    fn render(self, ctx: &mut Ctx) {
+        self(ctx)
+    }
+}
+
+#[doc(hidden)]
+pub struct CallbackRender<'a, Model, F> {
+    model: &'a mut Model,
+    view: &'a F,
+}
+
+impl<'a, Model, F, Ctx> Render<Ctx> for CallbackRender<'a, Model, F>
+where
+    F: Fn(&'a mut Model, &mut Ctx),
+{
+    fn render(self, ctx: &mut Ctx) {
+        (self.view)(self.model, ctx)
+    }
+}
+
+pub trait ViewFn<'a, Model, Msg: Send + 'static, ViewKind = DirectView> {
+    type View;
+
+    fn view(&'a self, model: &'a mut Model) -> Self::View;
+}
+
+impl<'a, F, Model, View, Msg> ViewFn<'a, Model, Msg, DirectView> for F
 where
     Model: 'a,
     F: Fn(&'a mut Model) -> View,
@@ -88,8 +124,22 @@ where
 {
     type View = View;
 
-    fn view(&self, model: &'a mut Model) -> Self::View {
+    fn view(&'a self, model: &'a mut Model) -> Self::View {
         self(model)
+    }
+}
+
+impl<'a, F, Model, Msg, Ctx> ViewFn<'a, Model, Msg, CallbackView<Ctx>> for F
+where
+    Model: 'a,
+    F: Fn(&'a mut Model, &mut Ctx) + 'a,
+    Msg: Send + 'static,
+    Ctx: 'a,
+{
+    type View = CallbackRender<'a, Model, F>;
+
+    fn view(&'a self, model: &'a mut Model) -> Self::View {
+        CallbackRender { model, view: self }
     }
 }
 
@@ -113,11 +163,11 @@ impl<Model, Msg: Send + 'static> SubFn<Model, Msg> for () {
     }
 }
 
-pub struct Application<Model, Msg: Send + 'static, I, U, V, S = ()>
+pub struct Application<Model, Msg: Send + 'static, I, U, V, S = (), ViewKind = DirectView>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    for<'a> V: ViewFn<'a, Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg, ViewKind>,
     S: SubFn<Model, Msg>,
 {
     pub(crate) init: I,
@@ -126,21 +176,24 @@ where
     pub(crate) subscriptions: S,
     _model: PhantomData<Model>,
     _msg: PhantomData<Msg>,
+    _view_kind: PhantomData<ViewKind>,
 }
 
-impl<Model, Msg: Send + 'static, I, U, V, S> Tea for Application<Model, Msg, I, U, V, S>
+impl<Model, Msg: Send + 'static, I, U, V, S, ViewKind> Tea
+    for Application<Model, Msg, I, U, V, S, ViewKind>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    for<'a> V: ViewFn<'a, Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg, ViewKind>,
     S: SubFn<Model, Msg>,
 {
     type Model = Model;
     type Msg = Msg;
     type View<'a>
-        = <V as ViewFn<'a, Model, Msg>>::View
+        = <V as ViewFn<'a, Model, Msg, ViewKind>>::View
     where
-        Model: 'a;
+        Model: 'a,
+        Self: 'a;
 
     fn init(&self) -> (Self::Model, Cmd<Self::Msg>) {
         self.init.init()
@@ -150,7 +203,7 @@ where
         self.update.update(model, msg)
     }
 
-    fn view<'a>(&self, model: &'a mut Self::Model) -> Self::View<'a> {
+    fn view<'a>(&'a self, model: &'a mut Self::Model) -> Self::View<'a> {
         self.view.view(model)
     }
 
@@ -159,11 +212,11 @@ where
     }
 }
 
-impl<Model, Msg: Send + 'static, I, U, V> Application<Model, Msg, I, U, V, ()>
+impl<Model, Msg: Send + 'static, I, U, V, ViewKind> Application<Model, Msg, I, U, V, (), ViewKind>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    for<'a> V: ViewFn<'a, Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg, ViewKind>,
 {
     pub fn new(init: I, update: U, view: V) -> Self {
         Self {
@@ -173,21 +226,22 @@ where
             subscriptions: (),
             _model: PhantomData,
             _msg: PhantomData,
+            _view_kind: PhantomData,
         }
     }
 }
 
-impl<Model, Msg: Send + 'static, I, U, V, S> Application<Model, Msg, I, U, V, S>
+impl<Model, Msg: Send + 'static, I, U, V, S, ViewKind> Application<Model, Msg, I, U, V, S, ViewKind>
 where
     I: InitFn<Model, Msg>,
     U: UpdateFn<Model, Msg>,
-    for<'a> V: ViewFn<'a, Model, Msg>,
+    for<'a> V: ViewFn<'a, Model, Msg, ViewKind>,
     S: SubFn<Model, Msg>,
 {
     pub fn subscriptions<S2: Fn(&Model) -> Sub<Msg>>(
         self,
         subscriptions: S2,
-    ) -> Application<Model, Msg, I, U, V, S2> {
+    ) -> Application<Model, Msg, I, U, V, S2, ViewKind> {
         Application {
             init: self.init,
             update: self.update,
@@ -195,6 +249,7 @@ where
             subscriptions,
             _model: PhantomData,
             _msg: PhantomData,
+            _view_kind: PhantomData,
         }
     }
 }

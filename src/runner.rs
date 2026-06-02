@@ -18,7 +18,7 @@ pub enum Action<Msg> {
 
 impl<Tea: crate::Tea> Runner<Tea>
 where
-    for<'a> Tea::View<'a>: FnOnce(&mut ratatui::Frame),
+    for<'a, 'frame> Tea::View<'a>: crate::Render<ratatui::Frame<'frame>>,
 {
     pub fn msg_to_action(self, msg_to_action: fn(Tea::Msg) -> Action<Tea::Msg>) -> Self {
         Self {
@@ -86,7 +86,8 @@ where
                     if dirty {
                         trace!("drawing frame");
                         let view = tea.view(&mut model);
-                        tui.draw(view).expect("terminal draw failed");
+                        tui.draw(|frame| crate::Render::render(view, frame))
+                            .expect("terminal draw failed");
                         dirty = false;
                     }
                     GLOBAL_EVENT_BUS.publish(Tick).await;
