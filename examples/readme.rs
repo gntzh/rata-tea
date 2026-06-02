@@ -61,7 +61,7 @@ impl Model {
         })
     }
 
-    fn view(&mut self, frame: &mut Frame) {
+    fn view(&self, frame: &mut Frame) {
         frame.render_widget(
             Paragraph::new(format!("Count: {}", self.count)),
             frame.area(),

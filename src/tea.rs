@@ -79,7 +79,13 @@ where
 pub struct DirectView;
 
 #[doc(hidden)]
+pub struct ReadonlyView;
+
+#[doc(hidden)]
 pub struct CallbackView<Ctx>(PhantomData<Ctx>);
+
+#[doc(hidden)]
+pub struct ReadonlyCallbackView<Ctx>(PhantomData<Ctx>);
 
 #[doc(hidden)]
 pub trait Render<Ctx> {
@@ -101,9 +107,24 @@ pub struct CallbackRender<'a, Model, F> {
     view: &'a F,
 }
 
+#[doc(hidden)]
+pub struct ReadonlyCallbackRender<'a, Model, F> {
+    model: &'a Model,
+    view: &'a F,
+}
+
 impl<'a, Model, F, Ctx> Render<Ctx> for CallbackRender<'a, Model, F>
 where
     F: Fn(&'a mut Model, &mut Ctx),
+{
+    fn render(self, ctx: &mut Ctx) {
+        (self.view)(self.model, ctx)
+    }
+}
+
+impl<'a, Model, F, Ctx> Render<Ctx> for ReadonlyCallbackRender<'a, Model, F>
+where
+    F: Fn(&'a Model, &mut Ctx),
 {
     fn render(self, ctx: &mut Ctx) {
         (self.view)(self.model, ctx)
@@ -129,6 +150,19 @@ where
     }
 }
 
+impl<'a, F, Model, View, Msg> ViewFn<'a, Model, Msg, ReadonlyView> for F
+where
+    Model: 'a,
+    F: Fn(&'a Model) -> View,
+    Msg: Send + 'static,
+{
+    type View = View;
+
+    fn view(&'a self, model: &'a mut Model) -> Self::View {
+        self(model)
+    }
+}
+
 impl<'a, F, Model, Msg, Ctx> ViewFn<'a, Model, Msg, CallbackView<Ctx>> for F
 where
     Model: 'a,
@@ -140,6 +174,20 @@ where
 
     fn view(&'a self, model: &'a mut Model) -> Self::View {
         CallbackRender { model, view: self }
+    }
+}
+
+impl<'a, F, Model, Msg, Ctx> ViewFn<'a, Model, Msg, ReadonlyCallbackView<Ctx>> for F
+where
+    Model: 'a,
+    F: Fn(&'a Model, &mut Ctx) + 'a,
+    Msg: Send + 'static,
+    Ctx: 'a,
+{
+    type View = ReadonlyCallbackRender<'a, Model, F>;
+
+    fn view(&'a self, model: &'a mut Model) -> Self::View {
+        ReadonlyCallbackRender { model, view: self }
     }
 }
 

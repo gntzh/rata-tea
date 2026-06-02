@@ -108,18 +108,16 @@ impl Model {
         })
     }
 
-    fn view(&mut self) -> impl FnOnce(&mut Frame) {
-        move |frame| {
-            let layout = Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]);
-            let [draft_area, messages_area] = frame.area().layout(&layout);
-            frame.render_widget(&self.draft, draft_area);
-            frame.render_widget(
-                Paragraph::new(Text::from_iter(
-                    self.messages.iter().map(|s| Line::from(s.as_str())),
-                )),
-                messages_area,
-            );
-        }
+    fn view(&self, frame: &mut Frame) {
+        let layout = Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]);
+        let [draft_area, messages_area] = frame.area().layout(&layout);
+        frame.render_widget(&self.draft, draft_area);
+        frame.render_widget(
+            Paragraph::new(Text::from_iter(
+                self.messages.iter().map(|s| Line::from(s.as_str())),
+            )),
+            messages_area,
+        );
     }
 }
 

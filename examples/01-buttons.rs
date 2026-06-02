@@ -63,12 +63,11 @@ impl Model {
         })
     }
 
-    fn view(&mut self) -> impl FnOnce(&mut Frame) {
-        move |frame| {
-            frame.render_widget(
-                Paragraph::new(format!("Count: {}", self.count)),
-                frame.area(),
-            );
-        }
+    /// based on context, readonly access to Model
+    fn view(&self, frame: &mut Frame) {
+        frame.render_widget(
+            Paragraph::new(format!("Count: {}", self.count)),
+            frame.area(),
+        );
     }
 }

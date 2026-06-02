@@ -137,28 +137,26 @@ impl Model {
         }
     }
 
-    fn view(&mut self) -> impl FnOnce(&mut Frame) {
-        move |frame| {
-            let [help_area, form_area, msg_area] = Layout::vertical([
-                Constraint::Length(1),
-                Constraint::Length(3),
-                Constraint::Min(1),
-            ])
-            .areas(frame.area());
+    fn view(&self, frame: &mut Frame) {
+        let [help_area, form_area, msg_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Min(1),
+        ])
+        .areas(frame.area());
 
-            frame.render_widget(Paragraph::new("<Tab> to switch, <Esc> to quit."), help_area);
+        frame.render_widget(Paragraph::new("<Tab> to switch, <Esc> to quit."), help_area);
 
-            let [name_area, password_area, password_again_area] =
-                Layout::horizontal(Constraint::from_fills([1, 1, 1])).areas(form_area);
-            frame.render_widget(&self.name, name_area);
-            frame.render_widget(&self.password, password_area);
-            frame.render_widget(&self.password_again, password_again_area);
-            let text = if self.password.lines() == self.password_again.lines() {
-                Line::raw("OK").style(Style::new().green())
-            } else {
-                Line::raw("Passwords do not match!").style(Style::new().red())
-            };
-            frame.render_widget(Paragraph::new(text), msg_area);
-        }
+        let [name_area, password_area, password_again_area] =
+            Layout::horizontal(Constraint::from_fills([1, 1, 1])).areas(form_area);
+        frame.render_widget(&self.name, name_area);
+        frame.render_widget(&self.password, password_area);
+        frame.render_widget(&self.password_again, password_again_area);
+        let text = if self.password.lines() == self.password_again.lines() {
+            Line::raw("OK").style(Style::new().green())
+        } else {
+            Line::raw("Passwords do not match!").style(Style::new().red())
+        };
+        frame.render_widget(Paragraph::new(text), msg_area);
     }
 }

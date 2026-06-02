@@ -73,12 +73,10 @@ impl Model {
         Sub::batch(subs)
     }
 
-    fn view(&mut self) -> impl FnOnce(&mut Frame) {
-        move |frame| {
-            frame.render_widget(
-                Paragraph::new(format!("Count: {}", self.count)),
-                frame.area(),
-            );
-        }
+    fn view(&self, frame: &mut Frame) {
+        frame.render_widget(
+            Paragraph::new(format!("Count: {}", self.count)),
+            frame.area(),
+        );
     }
 }
