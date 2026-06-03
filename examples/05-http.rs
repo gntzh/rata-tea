@@ -4,7 +4,6 @@ use ratatui::{
     Frame,
     widgets::{Paragraph, Wrap},
 };
-use tracing::debug;
 mod common;
 
 fn main() -> color_eyre::Result<()> {
@@ -17,8 +16,7 @@ fn main() -> color_eyre::Result<()> {
 
 enum Msg {
     GoText(reqwest::Result<String>),
-    ScrollUp,
-    ScrollDown,
+    Document(book::Msg),
     Quit,
 }
 
@@ -34,7 +32,7 @@ impl Msg {
 enum Model {
     Failure,
     Loading,
-    Success((String, u16)),
+    Success(book::Model),
 }
 
 impl Model {
@@ -55,16 +53,11 @@ impl Model {
     fn update(&mut self, msg: Msg) -> Cmd<Msg> {
         match msg {
             Msg::Quit => unreachable!(),
-            Msg::GoText(Ok(text)) => *self = Self::Success((text, 0)),
+            Msg::GoText(Ok(text)) => *self = Self::Success(book::Model::new(text)),
             Msg::GoText(Err(_)) => *self = Self::Failure,
-            Msg::ScrollUp => {
-                if let Self::Success((_, scroll)) = self {
-                    *scroll = scroll.saturating_sub(1);
-                }
-            }
-            Msg::ScrollDown => {
-                if let Self::Success((_, scroll)) = self {
-                    *scroll = scroll.saturating_add(1);
+            Msg::Document(msg) => {
+                if let Self::Success(book) = self {
+                    return book.update(msg).map(Msg::Document);
                 }
             }
         }
@@ -83,29 +76,156 @@ impl Model {
                 ..
             } => Some(Msg::Quit),
             KeyEvent {
-                code: KeyCode::Char('j'),
+                code: KeyCode::Char('j') | KeyCode::Down,
                 ..
-            } => Some(Msg::ScrollDown),
+            } => Some(Msg::Document(book::Msg::ScrollDown)),
             KeyEvent {
-                code: KeyCode::Char('k'),
+                code: KeyCode::Char('k') | KeyCode::Up,
                 ..
-            } => Some(Msg::ScrollUp),
+            } => Some(Msg::Document(book::Msg::ScrollUp)),
+            KeyEvent {
+                code: KeyCode::PageDown,
+                ..
+            } => Some(Msg::Document(book::Msg::PageDown)),
+            KeyEvent {
+                code: KeyCode::PageUp,
+                ..
+            } => Some(Msg::Document(book::Msg::PageUp)),
             _ => None,
         })
     }
 
-    fn view(&self, frame: &mut Frame) {
-        let (text, scroll) = match self {
-            Model::Loading => ("Loading...", 0),
-            Model::Failure => ("I was unable to load your book.", 0),
-            Model::Success((s, scroll)) => (s.as_str(), *scroll),
-        };
-        debug!(scroll);
-        frame.render_widget(
-            Paragraph::new(text)
-                .scroll((scroll, 0))
-                .wrap(Wrap::default()),
-            frame.area(),
-        );
+    fn view(&mut self, frame: &mut Frame) {
+        match self {
+            Self::Loading => frame.render_widget(
+                Paragraph::new("Loading...").wrap(Wrap::default()),
+                frame.area(),
+            ),
+            Self::Failure => frame.render_widget(
+                Paragraph::new("I was unable to load your book.").wrap(Wrap::default()),
+                frame.area(),
+            ),
+            Self::Success(book) => book.view(frame),
+        }
+    }
+}
+
+mod book {
+    use std::ops::Range;
+
+    use rata_tea::Cmd;
+    use ratatui::{
+        Frame,
+        text::{Line, Text},
+        widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    };
+
+    pub struct Model {
+        text: String,
+        lines: Vec<Range<usize>>,
+        line_count: usize,
+        viewport_height: u16,
+        scrollbar: ScrollbarState,
+    }
+    pub enum Msg {
+        ScrollUp,
+        ScrollDown,
+        PageUp,
+        PageDown,
+    }
+
+    impl Model {
+        pub fn new(text: String) -> Self {
+            let lines = line_ranges(&text);
+            let line_count = lines.len();
+            Self {
+                text,
+                lines,
+                line_count,
+                viewport_height: 0,
+                scrollbar: ScrollbarState::new(line_count),
+            }
+        }
+
+        pub fn update(&mut self, msg: Msg) -> Cmd<Msg> {
+            match msg {
+                Msg::ScrollUp => self.scroll_up(),
+                Msg::ScrollDown => self.scroll_down(),
+                Msg::PageUp => self.page_up(),
+                Msg::PageDown => self.page_down(),
+            }
+            Cmd::none()
+        }
+
+        pub fn view(&mut self, frame: &mut Frame) {
+            let area = frame.area();
+            self.viewport_height = area.height;
+            self.scrollbar = self.scrollbar.viewport_content_length(area.height as usize);
+            let scroll_position = self.scrollbar.get_position();
+            let visible_text = Text::from_iter(
+                self.lines
+                    .iter()
+                    .skip(scroll_position)
+                    .take(area.height as usize)
+                    .map(|line| Line::raw(&self.text[line.clone()])),
+            );
+            frame.render_widget(Paragraph::new(visible_text), area);
+            frame.render_stateful_widget(
+                Scrollbar::new(ScrollbarOrientation::VerticalRight),
+                area,
+                &mut self.scrollbar,
+            );
+        }
+    }
+
+    fn line_ranges(text: &str) -> Vec<Range<usize>> {
+        let mut ranges = Vec::new();
+        let mut start = 0;
+
+        for segment in text.split_inclusive('\n') {
+            let end = start + segment.len();
+            let mut line_end = end;
+            if segment.ends_with('\n') {
+                line_end -= 1;
+                if line_end > start && text.as_bytes()[line_end - 1] == b'\r' {
+                    line_end -= 1;
+                }
+            }
+            ranges.push(start..line_end);
+            start = end;
+        }
+
+        ranges
+    }
+
+    impl Model {
+        fn max_scroll_position(&self) -> usize {
+            self.line_count
+                .saturating_sub(self.viewport_height as usize)
+        }
+
+        fn scroll_up(&mut self) {
+            self.scrollbar.prev();
+        }
+        fn scroll_down(&mut self) {
+            if self.scrollbar.get_position() < self.max_scroll_position() {
+                self.scrollbar.next();
+            }
+        }
+        fn page_up(&mut self) {
+            let position = self
+                .scrollbar
+                .get_position()
+                .saturating_sub(self.viewport_height as usize);
+            self.scrollbar = self.scrollbar.position(position);
+        }
+        fn page_down(&mut self) {
+            let position = self
+                .scrollbar
+                .get_position()
+                .saturating_add(self.viewport_height as usize)
+                .min(self.max_scroll_position());
+            self.scrollbar = self.scrollbar.position(position);
+        }
     }
 }
