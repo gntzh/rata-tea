@@ -1,4 +1,7 @@
-use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_term_event};
+use rata_tea::{
+    Application, Cmd, Sub,
+    runner::{Action, Runner, on_term_event},
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},

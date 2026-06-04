@@ -2,7 +2,11 @@ use std::time::Duration;
 
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press, time::every};
+use rata_tea::{
+    Application, Cmd, Sub,
+    runner::{Action, Runner, on_key_press},
+    time::every,
+};
 use ratatui::{
     Frame,
     style::Style,

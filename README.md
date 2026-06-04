@@ -38,7 +38,10 @@ rata-tea = { version = "0.1", features = ["ratatui-crossterm"] }
 
 ```rust
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rata_tea::{Action, Application, Cmd, Runner, Sub, terminal::on_key_press};
+use rata_tea::{
+    Application, Cmd, Sub,
+    runner::{Action, Runner, on_key_press},
+};
 use ratatui::{Frame, widgets::Paragraph};
 
 fn main() -> color_eyre::Result<()> {

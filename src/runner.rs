@@ -1,10 +1,14 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use futures::{FutureExt, StreamExt};
+use crossterm::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
+use futures::{FutureExt as _, StreamExt as _};
 use tokio::task::JoinHandle;
 use tracing::{error, trace, warn};
 
-use crate::{Cmd, Dispatch, Sub, SubId, terminal::GLOBAL_EVENT_BUS};
+use crate::{Cmd, Dispatch, Sub, SubId, runtime::EventBus};
+
+static GLOBAL_EVENT_BUS: LazyLock<EventBus> = LazyLock::new(EventBus::default);
 
 pub struct Runner<Tea: crate::Tea> {
     frame_rate: f64,
@@ -148,4 +152,65 @@ impl Drop for DropHandle {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+pub fn on_term_event() -> Sub<TerminalEvent> {
+    Sub::make(
+        (),
+        |(), dispatch: Box<dyn Dispatch<TerminalEvent> + 'static>| {
+            let mut rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
+            async move {
+                loop {
+                    match rx.recv().await {
+                        Some(event) => {
+                            dispatch(event).await;
+                        }
+                        None => warn!("Event channel is closed by Sender"),
+                    }
+                }
+            }
+        },
+    )
+}
+
+pub fn on_key_event() -> Sub<KeyEvent> {
+    Sub::make((), |(), dispatch| {
+        let mut rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
+        async move {
+            loop {
+                match rx.recv().await {
+                    Some(event) => {
+                        if let TerminalEvent::Key(event @ KeyEvent { .. }) = event {
+                            dispatch(event).await;
+                        }
+                    }
+                    None => warn!("Event channel is closed by Sender"),
+                }
+            }
+        }
+    })
+}
+
+pub fn on_key_press() -> Sub<KeyEvent> {
+    Sub::make((), |(), dispatch| {
+        let mut rx = GLOBAL_EVENT_BUS.subscribe::<TerminalEvent>(None);
+        async move {
+            loop {
+                match rx.recv().await {
+                    Some(event) => {
+                        if let TerminalEvent::Key(
+                            event @ KeyEvent {
+                                kind: KeyEventKind::Press,
+                                ..
+                            },
+                        ) = event
+                        {
+                            dispatch(event).await;
+                        }
+                    }
+                    None => warn!("Event channel is closed by Sender"),
+                }
+            }
+        }
+    })
 }
