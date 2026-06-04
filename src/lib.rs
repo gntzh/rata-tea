@@ -1,5 +1,3 @@
-use std::{fmt::Debug, hash::Hash};
-
 pub use crossterm::event::Event as TerminalEvent;
 
 pub use core::*;
@@ -12,17 +10,6 @@ mod core;
 mod tea;
 
 mod runner;
-
-#[derive(Debug, Clone, strum::EnumDiscriminants, strum::EnumIs)]
-#[strum_discriminants(derive(Hash))]
-#[strum_discriminants(name(EventType))]
-pub enum Event {
-    Tick(Tick),
-    Terminal(TerminalEvent),
-}
-
-#[derive(Debug, Clone)]
-pub struct Tick;
 
 pub mod terminal {
     use std::sync::LazyLock;

@@ -4,7 +4,7 @@ use futures::{FutureExt, StreamExt};
 use tokio::task::JoinHandle;
 use tracing::{error, trace, warn};
 
-use crate::{Cmd, Dispatch, Sub, SubId, Tick, terminal::GLOBAL_EVENT_BUS};
+use crate::{Cmd, Dispatch, Sub, SubId, terminal::GLOBAL_EVENT_BUS};
 
 pub struct Runner<Tea: crate::Tea> {
     frame_rate: f64,
@@ -90,7 +90,6 @@ where
                             .expect("terminal draw failed");
                         dirty = false;
                     }
-                    GLOBAL_EVENT_BUS.publish(Tick).await;
                 }
                 Some(term_event) = terminal_event_stream.next() => {
                     match term_event {
