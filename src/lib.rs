@@ -2,6 +2,7 @@ pub use crossterm::event::Event as TerminalEvent;
 
 pub use core::*;
 pub use runner::{Action, Runner};
+pub use runtime::time;
 pub use tea::*;
 
 pub mod runtime;
