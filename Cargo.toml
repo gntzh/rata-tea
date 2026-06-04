@@ -23,7 +23,7 @@ ratatui-crossterm = [
     "dep:color-eyre",
     "dep:crossterm",
     "dep:ratatui",
-    "ratatui/crossterm_0_29",
+    "ratatui/crossterm",
 ]
 
 [dependencies]
