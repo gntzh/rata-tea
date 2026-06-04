@@ -1,9 +1,7 @@
 use std::any::TypeId;
 
 use dashmap::DashMap;
-use tracing::{error, trace, warn};
-
-use crate::Sub;
+use tracing::{error, trace};
 
 /// Factory invoked at spawn-time by the runner. Consumed once.
 pub mod time {
@@ -97,22 +95,5 @@ impl EventBus {
                 logging_send_event_result(last.0.send(event.clone()).await);
             }
         }
-    }
-}
-
-impl EventBus {
-    #[inline]
-    pub fn sub<E: Send + 'static>(&self, filter: impl Into<Option<fn(&E) -> bool>>) -> Sub<E> {
-        let mut rx = self.subscribe(filter);
-        Sub::make((), move |(), dispatch| async move {
-            loop {
-                match rx.recv().await {
-                    Some(event) => {
-                        dispatch(event).await;
-                    }
-                    None => warn!("Event channel is closed by Sender"),
-                }
-            }
-        })
     }
 }
