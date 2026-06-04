@@ -1,6 +1,6 @@
 use rata_tea::{
     Application, Cmd, Sub,
-    runner::{Action, Runner, on_term_event},
+    ratatui::{Action, Runner, on_term_event},
 };
 use ratatui::{
     Frame,

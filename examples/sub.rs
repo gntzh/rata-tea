@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rata_tea::{
     Application, Cmd, Sub,
-    runner::{Action, Runner, on_key_press, on_term_event},
+    ratatui::{Action, Runner, on_key_press, on_term_event},
 };
 use ratatui::{Frame, widgets::Paragraph};
 mod common;

@@ -22,7 +22,7 @@ pub enum Action<Msg> {
 
 impl<Tea: crate::Tea> Runner<Tea>
 where
-    for<'a, 'ctx, 'frame> Tea::View<'a>: crate::Render<&'ctx mut ratatui::Frame<'frame>>,
+    for<'a, 'ctx, 'frame> Tea::View<'a>: crate::Render<&'ctx mut ::ratatui::Frame<'frame>>,
 {
     pub fn msg_to_action(self, msg_to_action: fn(Tea::Msg) -> Action<Tea::Msg>) -> Self {
         Self {
@@ -38,7 +38,7 @@ where
     #[tokio::main]
     pub async fn run(self, tea: Tea) -> color_eyre::Result<()> {
         color_eyre::install()?;
-        let mut tui = ratatui::try_init()?;
+        let mut tui = ::ratatui::try_init()?;
 
         let (msg_tx, mut msg_rx) = tokio::sync::mpsc::channel::<Tea::Msg>(1024);
         let dispatch = {
@@ -105,7 +105,7 @@ where
             }};
         }
 
-        ratatui::try_restore()?;
+        ::ratatui::try_restore()?;
         Ok(())
     }
 

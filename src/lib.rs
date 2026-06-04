@@ -7,7 +7,7 @@ pub mod runtime;
 pub use runtime::time;
 
 #[cfg(feature = "ratatui-crossterm")]
-pub mod runner;
+pub mod ratatui;
 
 mod core;
 mod tea;
