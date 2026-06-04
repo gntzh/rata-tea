@@ -1,15 +1,14 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::LazyLock};
 
 use color_eyre::eyre::Result;
-use lazy_static::lazy_static;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{self, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-lazy_static! {
-    pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
-    pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
-    pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_CRATE_NAME"));
-}
+pub static PROJECT_NAME: LazyLock<String> =
+    LazyLock::new(|| env!("CARGO_CRATE_NAME").to_uppercase().to_string());
+pub static LOG_ENV: LazyLock<String> = LazyLock::new(|| format!("{}_LOGLEVEL", *PROJECT_NAME));
+pub static LOG_FILE: LazyLock<String> =
+    LazyLock::new(|| format!("{}.log", env!("CARGO_CRATE_NAME")));
 
 pub fn initialize_logging() -> Result<()> {
     let directory = PathBuf::from("./examples.log");
