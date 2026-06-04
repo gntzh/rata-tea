@@ -1,17 +1,22 @@
-pub use crossterm::event::Event as TerminalEvent;
-
 pub use core::*;
+#[cfg(feature = "ratatui-crossterm")]
+pub use crossterm::event::Event as TerminalEvent;
+#[cfg(feature = "ratatui-crossterm")]
 pub use runner::{Action, Runner};
+#[cfg(feature = "runtime")]
 pub use runtime::time;
 pub use tea::*;
 
+#[cfg(feature = "runtime")]
 pub mod runtime;
 
 mod core;
 mod tea;
 
+#[cfg(feature = "ratatui-crossterm")]
 mod runner;
 
+#[cfg(feature = "ratatui-crossterm")]
 pub mod terminal {
     use std::sync::LazyLock;
 

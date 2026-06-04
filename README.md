@@ -18,6 +18,22 @@ The crate is currently `0.1.x`, so the public API is intended to be useful but m
 rata-tea = "0.1"
 ```
 
+Default features are disabled. The core TEA types only depend on `futures`.
+
+Enable the built-in Tokio runtime helpers with:
+
+```toml
+[dependencies]
+rata-tea = { version = "0.1", features = ["runtime"] }
+```
+
+Enable the Ratatui/Crossterm runner with:
+
+```toml
+[dependencies]
+rata-tea = { version = "0.1", features = ["ratatui-crossterm"] }
+```
+
 ## Minimal Example
 
 ```rust
@@ -96,7 +112,7 @@ impl Model {
 Run the repository examples with:
 
 ```sh
-cargo run --example 01-buttons
+cargo run --example 01-buttons --features ratatui-crossterm
 ```
 
 ## Examples
@@ -114,8 +130,8 @@ Before opening a PR, run:
 
 ```sh
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test --all-targets
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
 cargo doc --no-deps
 cargo package
 ```

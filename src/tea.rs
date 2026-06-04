@@ -21,7 +21,7 @@ pub trait Tea {
 
     /// render model to the terminal.
     ///
-    /// In ratatui, there are [`ratatui::widgets::StatefulWidget`]s which require a mutable reference to state during render.
+    /// In ratatui, there are StatefulWidgets which require a mutable reference to state during render.
     fn view<'a>(&'a self, model: &'a mut Self::Model) -> Self::View<'a>;
 
     fn subscriptions(&self, _model: &Self::Model) -> Sub<Self::Msg> {
